@@ -28,15 +28,22 @@
  **/
 
 #include "TestDll.h"
+#include <stdio.h>
 
-//-----------------------------------------------------------
+static void
+hookIDispatch(void)
+{
+	::MessageBoxW(NULL, L"About to hook IDispatch", L"TestDll", MB_OK);
+	printf("Hello World\n");
+	::MessageBoxW(NULL, L"Done hooking IDispatch", L"TestDll", MB_OK);
+}
 
 extern "C" BOOL APIENTRY DllMain(__in HMODULE hModule, __in DWORD ulReasonForCall, __in LPVOID lpReserved)
 {
   switch (ulReasonForCall)
   {
     case DLL_PROCESS_ATTACH:
-      ::MessageBoxW(NULL, L"In DllMain process attach", L"TestDll", MB_OK);
+		hookIDispatch();
       break;
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
