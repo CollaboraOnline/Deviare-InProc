@@ -27,7 +27,7 @@
  *
  **/
 
-#define WIN32_LEAN_AND_MEAN
+// #define WIN32_LEAN_AND_MEAN
 
 #include <windows.h>
 #include "..\..\..\Include\NktHookLib.h"
@@ -66,6 +66,99 @@
   #error Unsupported platform
 #endif
 
+#if 0
+
+#include <stdio.h>
+
+HRESULT(STDMETHODCALLTYPE *RealInvokeFn)(
+	DISPID     dispIdMember,
+	REFIID     riid,
+	LCID       lcid,
+	WORD       wFlags,
+	DISPPARAMS *pDispParams,
+	VARIANT    *pVarResult,
+	EXCEPINFO  *pExcepInfo,
+	UINT       *puArgErr
+	);
+
+HRESULT STDMETHODCALLTYPE HookedInvokeFunction(
+	DISPID     dispIdMember,
+	REFIID     riid,
+	LCID       lcid,
+	WORD       wFlags,
+	DISPPARAMS *pDispParams,
+	VARIANT    *pVarResult,
+	EXCEPINFO  *pExcepInfo,
+	UINT       *puArgErr
+)
+{
+	printf("Hooked invoke %d\n", dispIdMember);
+	return RealInvokeFn(dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
+}
+
+static CNktHookLib cHookMgr;
+
+static void
+hookIDispatch(void)
+{
+	::MessageBoxW(NULL, L"About to hook IDispatch", L"TestDll", MB_OK);
+	// FIXME: does this work nicely so early in the startup ?
+	CoInitialize(NULL);
+
+	CLSID clsid;
+	LPCOLESTR progID = L"Excel.Application";
+
+	HRESULT hr = CLSIDFromProgID(progID, &clsid);
+	if (FAILED(hr))
+	{
+		printf("Can't find prog-id\n");
+		return;
+	}
+	IDispatch *pApp = NULL;
+	hr = CoCreateInstance(clsid, NULL, CLSCTX_LOCAL_SERVER /* out of proc*/, IID_PPV_ARGS(&pApp));
+	if (FAILED(hr))
+	{
+		printf("Failed to create instance\n");
+	}
+	if (pApp == NULL)
+	{
+		printf("No IDispatch interface\n");
+	}
+
+	SIZE_T ignoreHookId;
+	cHookMgr.Hook(&ignoreHookId, (LPVOID *)&RealInvokeFn, (LPVOID)42 /*pApp->Invoke*/, (LPVOID)HookedInvokeFunction,
+		NKTHOOKLIB_DisallowReentrancy);
+
+	// Leak the COM object - why not.
+	::MessageBoxW(NULL, L"Done hooking IDispatch", L"TestDll", MB_OK);
+}
+
+extern "C" BOOL APIENTRY DllMain(__in HMODULE hModule, __in DWORD ulReasonForCall, __in LPVOID lpReserved)
+{
+	switch (ulReasonForCall)
+	{
+	case DLL_PROCESS_ATTACH:
+		hookIDispatch();
+		break;
+	case DLL_THREAD_ATTACH:
+	case DLL_THREAD_DETACH:
+	case DLL_PROCESS_DETACH:
+		break;
+	}
+	return TRUE;
+}
+
+extern "C" DWORD __stdcall InitializeDll()
+{
+	if (::MessageBoxW(NULL, L"In InitializeDll. Press 'OK' to continue or 'Cancel' to return an error.", L"TestDll",
+		MB_OKCANCEL) != IDOK)
+	{
+		return ERROR_CANCELLED;
+	}
+	return ERROR_SUCCESS;
+}
+
+#else
 //-----------------------------------------------------------
 
 typedef int (WINAPI *lpfnMessageBoxW)(__in_opt HWND hWnd, __in_opt LPCWSTR lpText, __in_opt LPCWSTR lpCaption, __in UINT uType);
@@ -149,8 +242,9 @@ static int WINAPI Hooked_MessageBoxW(__in_opt HWND hWnd, __in_opt LPCWSTR lpText
       (DWORD)__safe_se_handler_table,
       (DWORD) &__safe_se_handler_count
   };
-
   #ifdef __cplusplus
   }
   #endif //__cplusplus
 #endif //_M_IX86
+
+#endif // 0

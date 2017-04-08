@@ -28,13 +28,72 @@
  **/
 
 #include "TestDll.h"
+#include "..\..\..\Include\NktHookLib.h"
 #include <stdio.h>
+
+HRESULT (STDMETHODCALLTYPE *RealInvokeFn)(
+	      DISPID     dispIdMember,
+	      REFIID     riid,
+	      LCID       lcid,
+	      WORD       wFlags,
+	      DISPPARAMS *pDispParams,
+	      VARIANT    *pVarResult,
+	      EXCEPINFO  *pExcepInfo,
+	      UINT       *puArgErr
+);
+
+HRESULT STDMETHODCALLTYPE HookedInvokeFunction(
+	DISPID     dispIdMember,
+	REFIID     riid,
+	LCID       lcid,
+	WORD       wFlags,
+	DISPPARAMS *pDispParams,
+	VARIANT    *pVarResult,
+	EXCEPINFO  *pExcepInfo,
+	UINT       *puArgErr
+)
+{
+	printf("Hooked invoke %d\n", dispIdMember);
+	return RealInvokeFn(dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
+}
+
+static CNktHookLib cHookMgr;
 
 static void
 hookIDispatch(void)
 {
-	::MessageBoxW(NULL, L"About to hook IDispatch", L"TestDll", MB_OK);
-	printf("Hello World\n");
+	::MessageBoxW(NULL, L"About to newly hook IDispatch", L"TestDll", MB_OK);
+	// FIXME: does this work nicely so early in the startup ?
+	printf("about to coinitialize\n");
+	CoInitialize(NULL);
+	printf("done coinitialize\n");
+
+	CLSID clsid;
+	LPCOLESTR progID = L"Excel.Application";
+
+	HRESULT hr = CLSIDFromProgID(progID, &clsid);
+	if (FAILED(hr))
+	{
+		printf("Can't find prog-id\n");
+		return;
+	}
+	IDispatch *pApp = NULL;
+	hr = CoCreateInstance(clsid, NULL, CLSCTX_LOCAL_SERVER /* out of proc*/, IID_PPV_ARGS(&pApp));
+	if (FAILED(hr))
+	{
+		printf("Failed to create instance\n");
+	}
+	if (pApp == NULL)
+	{
+		printf("No IDispatch interface\n");
+	}
+	printf("got IDispatch\n");
+
+	SIZE_T ignoreHookId;
+	cHookMgr.Hook(&ignoreHookId, (LPVOID *)&RealInvokeFn, (LPVOID)42 /*pApp->Invoke*/, (LPVOID)HookedInvokeFunction,
+		          NKTHOOKLIB_DisallowReentrancy);
+
+	// Leak the COM object - why not.
 	::MessageBoxW(NULL, L"Done hooking IDispatch", L"TestDll", MB_OK);
 }
 
