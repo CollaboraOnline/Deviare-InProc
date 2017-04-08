@@ -9,7 +9,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>DeviareLiteInterop</RootNamespace>
     <AssemblyName>DeviareLiteInterop</AssemblyName>
-    <TargetFrameworkVersion>v2.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
     <BaseIntermediateOutputPath>obj\$(Configuration)\$(Platform)\Interop</BaseIntermediateOutputPath>
@@ -26,6 +26,7 @@
     <UseVSHostingProcess>false</UseVSHostingProcess>
     <BaseIntermediateOutputPath>obj\$(Configuration)\$(Platform)\Interop</BaseIntermediateOutputPath>
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)\</IntermediateOutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -37,6 +38,7 @@
     <UseVSHostingProcess>false</UseVSHostingProcess>
     <BaseIntermediateOutputPath>obj\$(Configuration)\$(Platform)\Interop</BaseIntermediateOutputPath>
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)\</IntermediateOutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />

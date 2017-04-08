@@ -76,12 +76,12 @@ int __CRTDECL wmain(__in int argc, __in wchar_t *argv[], __in wchar_t *envp[])
 {
   DWORD dwOsErr, dwPid;
   LPWSTR szExeNameW, szDllToInjectNameW;
-  LPSTR szInitFunctionA;
+  LPWSTR szCommandArgumentsW;
 
   //check arguments
   if (argc < 3)
   {
-    wprintf_s(L"Use: InjectDLL path-to-exe|process-id path-to-dll [initialize-function-name]\n");
+    wprintf_s(L"Use: InjectDLL path-to-exe|process-id path-to-dll [\"command arguments\"]\n");
     return 1;
   }
   //if first argument is numeric, assume a process ID
@@ -118,15 +118,10 @@ int __CRTDECL wmain(__in int argc, __in wchar_t *argv[], __in wchar_t *envp[])
   szDllToInjectNameW = argv[2];
 
   //is initialize function specified?
-  szInitFunctionA = NULL;
+  szCommandArgumentsW = NULL;
   if (argc >= 4 && argv[3][0] != 0)
   {
-    szInitFunctionA = ToAnsi(argv[3]);
-    if (!szInitFunctionA)
-    {
-      wprintf_s(L"Error: Not enough memory.\n");
-      return 1;
-    }
+	  szCommandArgumentsW = argv[3];
   }
 
   //execute action
@@ -136,7 +131,7 @@ int __CRTDECL wmain(__in int argc, __in wchar_t *argv[], __in wchar_t *envp[])
     DWORD dwExitCode;
     HANDLE hInjectorThread;
 
-    dwOsErr = NktHookLibHelpers::InjectDllByPidW(dwPid, szDllToInjectNameW, szInitFunctionA, 5000, &hInjectorThread);
+    dwOsErr = NktHookLibHelpers::InjectDllByPidW(dwPid, szDllToInjectNameW, NULL, 5000, &hInjectorThread);
     if (dwOsErr == ERROR_SUCCESS)
     {
       wprintf_s(L"Dll successfully injected!\n");
@@ -158,8 +153,8 @@ int __CRTDECL wmain(__in int argc, __in wchar_t *argv[], __in wchar_t *envp[])
     memset(&sSiW, 0, sizeof(sSiW));
     sSiW.cb = (DWORD)sizeof(sSiW);
     memset(&sPi, 0, sizeof(sPi));
-    dwOsErr = NktHookLibHelpers::CreateProcessWithDllW(szExeNameW, NULL, NULL, NULL, FALSE, 0, NULL, NULL, &sSiW, &sPi,
-                                                       szDllToInjectNameW, NULL, szInitFunctionA);
+    dwOsErr = NktHookLibHelpers::CreateProcessWithDllW(szExeNameW, szCommandArgumentsW, NULL, NULL, FALSE, 0, NULL, NULL, &sSiW, &sPi,
+                                                       szDllToInjectNameW, NULL, NULL);
     if (dwOsErr == ERROR_SUCCESS)
     {
       wprintf_s(L"Process #%lu successfully launched with dll injected!\n", sPi.dwProcessId);
@@ -171,7 +166,6 @@ int __CRTDECL wmain(__in int argc, __in wchar_t *argv[], __in wchar_t *envp[])
       wprintf_s(L"Error %lu: Cannot launch process and inject dll.\n", dwOsErr);
     }
   }
-  free(szInitFunctionA);
   return (dwOsErr == ERROR_SUCCESS) ? 0 : 2;
 }
 
