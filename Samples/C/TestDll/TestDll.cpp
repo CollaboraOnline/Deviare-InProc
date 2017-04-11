@@ -30,14 +30,28 @@
 #include "TestDll.h"
 #include "..\..\..\Include\NktHookLib.h"
 
+static CNktHookLib cHookMgr;
+
+static void Print(char *string)
+{
+  HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (stdOut != NULL && stdOut != INVALID_HANDLE_VALUE)
+  {
+    DWORD written;
+    ::WriteFile(stdOut, string, ::lstrlenA(string), &written, NULL);
+    ::WriteFile(stdOut, "\n", 1, &written, NULL);
+  }
+}
+
 static void Print(wchar_t *string)
 {
   HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
   if (stdOut != NULL && stdOut != INVALID_HANDLE_VALUE)
   {
     DWORD written;
-    ::WriteConsoleW(stdOut, string, ::lstrlenW(string), &written, NULL);
-    ::WriteConsoleW(stdOut, L"\n", 1, &written, NULL);
+    while (*string)
+      ::WriteFile(stdOut, string++, 1, &written, NULL);
+    ::WriteFile(stdOut, "\n", 1, &written, NULL);
   }
 }
 
@@ -65,29 +79,23 @@ HRESULT STDMETHODCALLTYPE HookedInvokeFunction(
 	UINT       *puArgErr
 )
 {
-	wchar_t message[100];
-	NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]), L"Hooked invoke %d", dispIdMember);
+	char message[100];
+	NktHookLibHelpers::sprintf_s(message, sizeof(message)/sizeof(message[0]), "Hooked invoke %d", dispIdMember);
 	Print(message);
 	return RealInvokeFn(dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
 }
-
-#endif
-
-static CNktHookLib cHookMgr;
-
-#if 0
 
 static void
 hookIDispatch(void)
 {
 	HRESULT hr;
 
-	Print(L"About to newly hook IDispatch");
+	Print("About to newly hook IDispatch");
 	// FIXME: does this work nicely so early in the startup ?
 	hr = CoInitialize(NULL);
 	if (FAILED(hr))
 	{
-		Print(L"CoInitialize failed");
+		Print("CoInitialize failed");
 		return;
 	}
 
@@ -97,27 +105,27 @@ hookIDispatch(void)
 	hr = CLSIDFromProgID(progID, &clsid);
 	if (FAILED(hr))
 	{
-		Print(L"Can't find CLSID for Excel.Aplication");
+		Print("Can't find CLSID for Excel.Aplication");
 		return;
 	}
 	IDispatch *pApp = NULL;
 	hr = CoCreateInstance(clsid, NULL, CLSCTX_LOCAL_SERVER /* out of proc*/, IID_PPV_ARGS(&pApp));
 	if (FAILED(hr))
 	{
-		Print(L"Failed to create Excel instance");
+		Print("Failed to create Excel instance");
 	}
 	if (pApp == NULL)
 	{
-		Print(L"No IDispatch interface");
+		Print("No IDispatch interface");
 	}
-	Print(L"got IDispatch");
+	Print("got IDispatch");
 
 	SIZE_T ignoreHookId;
 	cHookMgr.Hook(&ignoreHookId, (LPVOID *)&RealInvokeFn, (LPVOID)42 /*pApp->Invoke*/, (LPVOID)HookedInvokeFunction,
 		          NKTHOOKLIB_DisallowReentrancy);
 
 	// Leak the COM object - why not.
-	Print(L"Done hooking IDispatch");
+	Print("Done hooking IDispatch");
 }
 
 #endif
@@ -176,16 +184,11 @@ static struct {
   lpfnCoGetClassObject fnCoGetClassObject;
 } sCoGetClassObject_Hook = { 0, NULL };
 
-static bool
+static void
 DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
 {
   LPOLESTR szRclsIDAsString;
   HRESULT hr;
-
-  CLSID aExcel;
-  hr = ::CLSIDFromProgID(L"Excel.Application", &aExcel);
-
-  const bool bIsExcel = !FAILED(hr) && memcmp(&rclsid, &aExcel, sizeof(aExcel)) == 0;
 
   wchar_t message[100];
   hr = ::StringFromCLSID(rclsid, &szRclsIDAsString);
@@ -194,11 +197,10 @@ DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
     LPOLESTR szRclsIDAsProgID;
     hr = ::ProgIDFromCLSID(rclsid, &szRclsIDAsProgID);
     NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]),
-				  L"%s(%s) (%s)%s",
+				  L"%s(%s) (%s)",
 				  api,
 				  szRclsIDAsString,
-				  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"),
-				  (bIsExcel ? L" (Is Excel!)" : L""));
+				  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"));
     CoTaskMemFree(szRclsIDAsString);
     if (!FAILED(hr))
       CoTaskMemFree(szRclsIDAsProgID);
@@ -206,32 +208,165 @@ DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
   else
   {
     NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]),
-				  L"%s on bogus CLSID?%s",
-				  api,
-				  (bIsExcel ? L" (Is Excel!)" : L""));
+				  L"%s on bogus CLSID?",
+				  api);
   }
   Print(message);
+}
 
-  return bIsExcel;
+// From <oaidl.h>: The C style interface for IDispatch:
+
+typedef struct
+{
+    BEGIN_INTERFACE
+
+    HRESULT ( STDMETHODCALLTYPE *QueryInterface )(
+	__RPC__in IDispatch * This,
+	/* [in] */ __RPC__in REFIID riid,
+	/* [annotation][iid_is][out] */
+	_COM_Outptr_  void **ppvObject);
+
+    ULONG ( STDMETHODCALLTYPE *AddRef )(
+	__RPC__in IDispatch * This);
+
+    ULONG ( STDMETHODCALLTYPE *Release )(
+	__RPC__in IDispatch * This);
+
+    HRESULT ( STDMETHODCALLTYPE *GetTypeInfoCount )(
+	__RPC__in IDispatch * This,
+	/* [out] */ __RPC__out UINT *pctinfo);
+
+    HRESULT ( STDMETHODCALLTYPE *GetTypeInfo )(
+	__RPC__in IDispatch * This,
+	/* [in] */ UINT iTInfo,
+	/* [in] */ LCID lcid,
+	/* [out] */ __RPC__deref_out_opt ITypeInfo **ppTInfo);
+
+    HRESULT ( STDMETHODCALLTYPE *GetIDsOfNames )(
+	__RPC__in IDispatch * This,
+	/* [in] */ __RPC__in REFIID riid,
+	/* [size_is][in] */ __RPC__in_ecount_full(cNames) LPOLESTR *rgszNames,
+	/* [range][in] */ __RPC__in_range(0,16384) UINT cNames,
+	/* [in] */ LCID lcid,
+	/* [size_is][out] */ __RPC__out_ecount_full(cNames) DISPID *rgDispId);
+
+    /* [local] */ HRESULT ( STDMETHODCALLTYPE *Invoke )(
+	IDispatch * This,
+	/* [annotation][in] */
+	_In_  DISPID dispIdMember,
+	/* [annotation][in] */
+	_In_  REFIID riid,
+	/* [annotation][in] */
+	_In_  LCID lcid,
+	/* [annotation][in] */
+	_In_  WORD wFlags,
+	/* [annotation][out][in] */
+	_In_  DISPPARAMS *pDispParams,
+	/* [annotation][out] */
+	_Out_opt_  VARIANT *pVarResult,
+	/* [annotation][out] */
+	_Out_opt_  EXCEPINFO *pExcepInfo,
+	/* [annotation][out] */
+	_Out_opt_  UINT *puArgErr);
+
+    END_INTERFACE
+} IDispatchVtbl;
+
+typedef HRESULT (WINAPI *lpfnInvoke)(IDispatch *This,
+				     _In_  DISPID dispIdMember,
+				     _In_  REFIID riid,
+				     _In_  LCID lcid,
+				     _In_  WORD wFlags,
+				     _In_  DISPPARAMS *pDispParams,
+				     _Out_opt_  VARIANT *pVarResult,
+				     _Out_opt_  EXCEPINFO *pExcepInfo,
+				     _Out_opt_  UINT *puArgErr);
+
+static struct {
+  SIZE_T nHookId;
+  lpfnInvoke fnInvoke;
+} sInvoke_Hook = { 0, NULL };
+
+static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
+				    _In_  DISPID dispIdMember,
+				    _In_  REFIID riid,
+				    _In_  LCID lcid,
+				    _In_  WORD wFlags,
+				    _In_  DISPPARAMS *pDispParams,
+				    _Out_opt_  VARIANT *pVarResult,
+				    _Out_opt_  EXCEPINFO *pExcepInfo,
+				    _Out_opt_  UINT *puArgErr)
+{
+  HRESULT result = sInvoke_Hook.fnInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
+
+  return result;
+}
+
+static void
+DoIDispatchMagic(IDispatch *pdisp)
+{
+  if (sInvoke_Hook.nHookId != 0)
+    return;
+
+  ITypeInfo *pTInfo;
+
+  HRESULT hr = pdisp->GetTypeInfo(0, 0x0409, &pTInfo);
+  if (FAILED(hr))
+  {
+    Print("GetTypeInfo failed!");
+    return;
+  }
+
+  UINT index = 0;
+  FUNCDESC *pFuncDesc;
+  while (SUCCEEDED(pTInfo->GetFuncDesc(index++, &pFuncDesc)))
+  {
+    wchar_t message[100];
+
+    BSTR name = SysAllocString(L"                                                       ");
+    UINT numNames;
+    if (!SUCCEEDED(pTInfo->GetNames(pFuncDesc->memid, &name, 1, &numNames)))
+      Print("  GetNames failed");
+
+    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]),
+				  L"  Member %lx: %s kind: %d invoke: %d",
+				  pFuncDesc->memid,
+				  name,
+				  pFuncDesc->funckind,
+				  pFuncDesc->invkind);
+    Print(message);
+
+    pTInfo->ReleaseFuncDesc(pFuncDesc);
+  }
+
+  // Hook the Invoke
+  LPVOID fnOrigInvoke = (*(IDispatchVtbl**)pdisp)->Invoke;
+  DWORD dwOsErr = cHookMgr.Hook(&(sInvoke_Hook.nHookId),
+				(LPVOID *) &(sInvoke_Hook.fnInvoke),
+				fnOrigInvoke,
+				Hooked_Invoke,
+				0);
 }
 
 static void
 hookCoCreateInstance(void)
 {
+  ::MessageBoxW(NULL, L"Hey Ho", L"TestDll", MB_OK);
+
 	HINSTANCE hOle32Dll;
 	DWORD dwOsErr;
 
 	hOle32Dll = NktHookLibHelpers::GetModuleBaseAddress(L"ole32.dll");
 	if (hOle32Dll == NULL)
 	{
-		Print(L"Cannot get handle of ole32.dll");
+		Print("Cannot get handle of ole32.dll");
 		return;
 	}
 
 	LPVOID fnOrigCoCreateInstance = ::GetProcAddress(hOle32Dll, "CoCreateInstance");
 	if (fnOrigCoCreateInstance == NULL)
 	{
-		Print(L"Cannot get address of CoCreateInstance");
+		Print("Cannot get address of CoCreateInstance");
 		return;
 	}
 
@@ -244,7 +379,7 @@ hookCoCreateInstance(void)
 	LPVOID fnOrigCoCreateInstanceEx = ::GetProcAddress(hOle32Dll, "CoCreateInstanceEx");
 	if (fnOrigCoCreateInstanceEx == NULL)
 	{
-		Print(L"Cannot get address of CoCreateInstanceEx");
+		Print("Cannot get address of CoCreateInstanceEx");
 		return;
 	}
 
@@ -257,7 +392,7 @@ hookCoCreateInstance(void)
 	LPVOID fnOrigCoGetClassObject = ::GetProcAddress(hOle32Dll, "CoGetClassObject");
 	if (fnOrigCoGetClassObject == NULL)
 	{
-		Print(L"Cannot get address of CoGetClassObject");
+		Print("Cannot get address of CoGetClassObject");
 		return;
 	}
 
@@ -274,11 +409,9 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
 					      _In_  REFIID    riid,
 					      _Out_ LPVOID    *ppv)
 {
-  bool bIsExcel = DumpCoCreateStyleCall(L"CoCreateInstance", rclsid);
+  DumpCoCreateStyleCall(L"CoCreateInstance", rclsid);
 
   HRESULT result = sCoCreateInstance_Hook.fnCoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
-  if (!bIsExcel)
-    return result;
 
   return result;
 }
@@ -290,13 +423,23 @@ static HRESULT WINAPI Hooked_CoCreateInstanceEx(_In_     REFCLSID     rclsid,
 						_In_     DWORD        dwCount,
 						_Inout_  MULTI_QI     *pResults)
 {
-  bool bIsExcel = DumpCoCreateStyleCall(L"CoCreateInstanceEx", rclsid);
+  DumpCoCreateStyleCall(L"CoCreateInstanceEx", rclsid);
 
   HRESULT result = sCoCreateInstanceEx_Hook.fnCoCreateInstanceEx(rclsid, pUnkOuter, dwClsContext, pServerInfo, dwCount, pResults);
-  if (!bIsExcel)
-    return result;
 
   return result;
+}
+
+static void
+hookClassFactory(LPVOID pv)
+{
+  IClassFactory *pfactory = (IClassFactory *) pv;
+
+  IDispatch *pdisp;
+  HRESULT hr = pfactory->CreateInstance(NULL, IID_IDispatch, (LPVOID *) &pdisp);
+
+  if (SUCCEEDED(hr))
+    DoIDispatchMagic(pdisp);
 }
 
 static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
@@ -305,9 +448,15 @@ static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
 					      _In_     REFIID       riid,
 					      _Out_    LPVOID       *ppv)
 {
-  bool bIsExcel = DumpCoCreateStyleCall(L"CoGetClassObject", rclsid);
+  DumpCoCreateStyleCall(L"CoGetClassObject", rclsid);
 
   HRESULT result =  sCoGetClassObject_Hook.fnCoGetClassObject(rclsid, dwClsContext, pServerInfo, riid, ppv);
+
+  if (FAILED(result))
+    return result;
+
+  if (IsEqualGUID(riid, IID_IClassFactory))
+    hookClassFactory(*ppv);
 
   return result;
 }
