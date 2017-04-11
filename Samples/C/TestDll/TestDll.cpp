@@ -30,6 +30,17 @@
 #include "TestDll.h"
 #include "..\..\..\Include\NktHookLib.h"
 
+static void Print(wchar_t *string)
+{
+  HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (stdOut != NULL && stdOut != INVALID_HANDLE_VALUE)
+  {
+    DWORD written;
+    ::WriteConsoleW(stdOut, string, ::lstrlenW(string), &written, NULL);
+    ::WriteConsoleW(stdOut, L"\n", 1, &written, NULL);
+  }
+}
+
 #if 0
 
 HRESULT (STDMETHODCALLTYPE *RealInvokeFn)(
@@ -56,7 +67,7 @@ HRESULT STDMETHODCALLTYPE HookedInvokeFunction(
 {
 	wchar_t message[100];
 	NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]), L"Hooked invoke %d", dispIdMember);
-	::MessageBoxW(NULL, message, L"TestDll", MB_OK);
+	Print(message);
 	return RealInvokeFn(dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
 }
 
@@ -71,12 +82,12 @@ hookIDispatch(void)
 {
 	HRESULT hr;
 
-	::MessageBoxW(NULL, L"About to newly hook IDispatch", L"TestDll", MB_OK);
+	Print(L"About to newly hook IDispatch");
 	// FIXME: does this work nicely so early in the startup ?
 	hr = CoInitialize(NULL);
 	if (FAILED(hr))
 	{
-		::MessageBoxW(NULL, L"CoInitialize failed", L"TestDll", MB_ICONERROR|MB_OK);
+		Print(L"CoInitialize failed");
 		return;
 	}
 
@@ -86,27 +97,27 @@ hookIDispatch(void)
 	hr = CLSIDFromProgID(progID, &clsid);
 	if (FAILED(hr))
 	{
-		::MessageBoxW(NULL, L"Can't find CLSID for Excel.Aplication", L"TestDll", MB_ICONERROR|MB_OK);
+		Print(L"Can't find CLSID for Excel.Aplication");
 		return;
 	}
 	IDispatch *pApp = NULL;
 	hr = CoCreateInstance(clsid, NULL, CLSCTX_LOCAL_SERVER /* out of proc*/, IID_PPV_ARGS(&pApp));
 	if (FAILED(hr))
 	{
-		::MessageBoxW(NULL, L"Failed to create Excel instance", L"TestDll", MB_ICONERROR|MB_OK);
+		Print(L"Failed to create Excel instance");
 	}
 	if (pApp == NULL)
 	{
-		::MessageBoxW(NULL, L"No IDispatch interface", L"TestDll", MB_ICONERROR|MB_OK);
+		Print(L"No IDispatch interface");
 	}
-	::MessageBoxW(NULL, L"got IDispatch", L"TestDll", MB_OK);
+	Print(L"got IDispatch");
 
 	SIZE_T ignoreHookId;
 	cHookMgr.Hook(&ignoreHookId, (LPVOID *)&RealInvokeFn, (LPVOID)42 /*pApp->Invoke*/, (LPVOID)HookedInvokeFunction,
 		          NKTHOOKLIB_DisallowReentrancy);
 
 	// Leak the COM object - why not.
-	::MessageBoxW(NULL, L"Done hooking IDispatch", L"TestDll", MB_OK);
+	Print(L"Done hooking IDispatch");
 }
 
 #endif
@@ -175,7 +186,7 @@ hookCoCreateInstance(void)
 	hOle32Dll = NktHookLibHelpers::GetModuleBaseAddress(L"ole32.dll");
 	if (hOle32Dll == NULL)
 	{
-		::MessageBoxW(NULL, L"Cannot get handle of ole32.dll", L"TestDll", MB_ICONERROR|MB_OK);
+		Print(L"Cannot get handle of ole32.dll");
 		return;
 	}
 
@@ -183,7 +194,7 @@ hookCoCreateInstance(void)
 	fnOrigCoCreateInstance = ::GetProcAddress(hOle32Dll, "CoCreateInstance");
 	if (fnOrigCoCreateInstance == NULL)
 	{
-		::MessageBoxW(NULL, L"Cannot get address of CoCreateInstance", L"TestDll", MB_ICONERROR|MB_OK);
+		Print(L"Cannot get address of CoCreateInstance");
 		return;
 	}
 
@@ -198,7 +209,7 @@ hookCoCreateInstance(void)
 	fnOrigCoCreateInstanceEx = ::GetProcAddress(hOle32Dll, "CoCreateInstanceEx");
 	if (fnOrigCoCreateInstanceEx == NULL)
 	{
-		::MessageBoxW(NULL, L"Cannot get address of CoCreateInstanceEx", L"TestDll", MB_ICONERROR|MB_OK);
+		Print(L"Cannot get address of CoCreateInstanceEx");
 		return;
 	}
 
@@ -213,7 +224,7 @@ hookCoCreateInstance(void)
 	fnOrigCoGetClassObject = ::GetProcAddress(hOle32Dll, "CoGetClassObject");
 	if (fnOrigCoGetClassObject == NULL)
 	{
-		::MessageBoxW(NULL, L"Cannot get address of CoGetClassObject", L"TestDll", MB_ICONERROR|MB_OK);
+		Print(L"Cannot get address of CoGetClassObject");
 		return;
 	}
 
@@ -259,7 +270,7 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
 				  L"CoCreateInstance on bogus CLSID?%s", 
 				  (bIsExcel ? L" (Is Excel!)" : L""));
   }
-  ::MessageBoxW(NULL, message, L"TestDll", MB_OK);
+  Print(message);
   
   HRESULT result = sCoCreateInstance_Hook.fnCoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
   if (!bIsExcel)
@@ -304,7 +315,7 @@ static HRESULT WINAPI Hooked_CoCreateInstanceEx(_In_     REFCLSID     rclsid,
 				  L"CoCreateInstanceEx on bogus CLSID?%s", 
 				  (bIsExcel ? L" (Is Excel!)" : L""));
   }
-  ::MessageBoxW(NULL, message, L"TestDll", MB_OK);
+  Print(message);
 
   HRESULT result = sCoCreateInstanceEx_Hook.fnCoCreateInstanceEx(rclsid, pUnkOuter, dwClsContext, pServerInfo, dwCount, pResults);
   if (!bIsExcel)
@@ -348,7 +359,7 @@ static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
 				  L"CoGetClassObject on bogus CLSID?%s", 
 				  (bIsExcel ? L" (Is Excel!)" : L""));
   }
-  ::MessageBoxW(NULL, message, L"TestDll", MB_OK);
+  Print(message);
 
   HRESULT result =  sCoGetClassObject_Hook.fnCoGetClassObject(rclsid, dwClsContext, pServerInfo, riid, ppv);
 
