@@ -29,7 +29,6 @@
 
 #include "TestDll.h"
 #include "..\..\..\Include\NktHookLib.h"
-#include <stdio.h>
 
 HRESULT (STDMETHODCALLTYPE *RealInvokeFn)(
 	      DISPID     dispIdMember,
@@ -53,7 +52,9 @@ HRESULT STDMETHODCALLTYPE HookedInvokeFunction(
 	UINT       *puArgErr
 )
 {
-	printf("Hooked invoke %d\n", dispIdMember);
+	wchar_t message[100];
+	NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]), L"Hooked invoke %d", dispIdMember);
+	::MessageBoxW(NULL, message, L"TestDll", MB_OK);
 	return RealInvokeFn(dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
 }
 
@@ -62,32 +63,37 @@ static CNktHookLib cHookMgr;
 static void
 hookIDispatch(void)
 {
+	HRESULT hr;
+
 	::MessageBoxW(NULL, L"About to newly hook IDispatch", L"TestDll", MB_OK);
 	// FIXME: does this work nicely so early in the startup ?
-	printf("about to coinitialize\n");
-	CoInitialize(NULL);
-	printf("done coinitialize\n");
+	hr = CoInitialize(NULL);
+	if (FAILED(hr))
+	{
+		::MessageBoxW(NULL, L"CoInitialize failed", L"TestDll", MB_ICONERROR|MB_OK);
+		return;
+	}
 
 	CLSID clsid;
 	LPCOLESTR progID = L"Excel.Application";
 
-	HRESULT hr = CLSIDFromProgID(progID, &clsid);
+	hr = CLSIDFromProgID(progID, &clsid);
 	if (FAILED(hr))
 	{
-		printf("Can't find prog-id\n");
+		::MessageBoxW(NULL, L"Can't find CLSID for Excel.Aplication", L"TestDll", MB_ICONERROR|MB_OK);
 		return;
 	}
 	IDispatch *pApp = NULL;
 	hr = CoCreateInstance(clsid, NULL, CLSCTX_LOCAL_SERVER /* out of proc*/, IID_PPV_ARGS(&pApp));
 	if (FAILED(hr))
 	{
-		printf("Failed to create instance\n");
+		::MessageBoxW(NULL, L"Failed to create Excel instance", L"TestDll", MB_ICONERROR|MB_OK);
 	}
 	if (pApp == NULL)
 	{
-		printf("No IDispatch interface\n");
+		::MessageBoxW(NULL, L"No IDispatch interface", L"TestDll", MB_ICONERROR|MB_OK);
 	}
-	printf("got IDispatch\n");
+	::MessageBoxW(NULL, L"got IDispatch", L"TestDll", MB_OK);
 
 	SIZE_T ignoreHookId;
 	cHookMgr.Hook(&ignoreHookId, (LPVOID *)&RealInvokeFn, (LPVOID)42 /*pApp->Invoke*/, (LPVOID)HookedInvokeFunction,
