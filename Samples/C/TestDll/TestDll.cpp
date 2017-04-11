@@ -176,11 +176,49 @@ static struct {
   lpfnCoGetClassObject fnCoGetClassObject;
 } sCoGetClassObject_Hook = { 0, NULL };
 
+static bool
+DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
+{
+  LPOLESTR szRclsIDAsString;
+  HRESULT hr;
+
+  CLSID aExcel;
+  hr = ::CLSIDFromProgID(L"Excel.Application", &aExcel);
+
+  const bool bIsExcel = !FAILED(hr) && memcmp(&rclsid, &aExcel, sizeof(aExcel)) == 0;
+
+  wchar_t message[100];
+  hr = ::StringFromCLSID(rclsid, &szRclsIDAsString);
+  if (!FAILED(hr))
+  {
+    LPOLESTR szRclsIDAsProgID;
+    hr = ::ProgIDFromCLSID(rclsid, &szRclsIDAsProgID);
+    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]),
+				  L"%s(%s) (%s)%s",
+				  api,
+				  szRclsIDAsString,
+				  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"),
+				  (bIsExcel ? L" (Is Excel!)" : L""));
+    CoTaskMemFree(szRclsIDAsString);
+    if (!FAILED(hr))
+      CoTaskMemFree(szRclsIDAsProgID);
+  }
+  else
+  {
+    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]),
+				  L"%s on bogus CLSID?%s",
+				  api,
+				  (bIsExcel ? L" (Is Excel!)" : L""));
+  }
+  Print(message);
+
+  return bIsExcel;
+}
+
 static void
 hookCoCreateInstance(void)
 {
 	HINSTANCE hOle32Dll;
-	LPVOID fnOrigCoCreateInstance;
 	DWORD dwOsErr;
 
 	hOle32Dll = NktHookLibHelpers::GetModuleBaseAddress(L"ole32.dll");
@@ -190,8 +228,7 @@ hookCoCreateInstance(void)
 		return;
 	}
 
-	// fnOrigCoCreateInstance = NktHookLibHelpers::GetProcedureAddress(hOle32Dll, "CoCreateInstance");
-	fnOrigCoCreateInstance = ::GetProcAddress(hOle32Dll, "CoCreateInstance");
+	LPVOID fnOrigCoCreateInstance = ::GetProcAddress(hOle32Dll, "CoCreateInstance");
 	if (fnOrigCoCreateInstance == NULL)
 	{
 		Print(L"Cannot get address of CoCreateInstance");
@@ -204,9 +241,7 @@ hookCoCreateInstance(void)
 				Hooked_CoCreateInstance,
 				NKTHOOKLIB_DisallowReentrancy);
 
-	LPVOID fnOrigCoCreateInstanceEx;
-	// fnOrigCoCreateInstanceEx = NktHookLibHelpers::GetProcedureAddress(hOle32Dll, "CoCreateInstanceEx");
-	fnOrigCoCreateInstanceEx = ::GetProcAddress(hOle32Dll, "CoCreateInstanceEx");
+	LPVOID fnOrigCoCreateInstanceEx = ::GetProcAddress(hOle32Dll, "CoCreateInstanceEx");
 	if (fnOrigCoCreateInstanceEx == NULL)
 	{
 		Print(L"Cannot get address of CoCreateInstanceEx");
@@ -219,9 +254,7 @@ hookCoCreateInstance(void)
 				Hooked_CoCreateInstanceEx,
 				NKTHOOKLIB_DisallowReentrancy);
 
-	LPVOID fnOrigCoGetClassObject;
-	// fnOrigCoGetClassObject = NktHookLibHelpers::GetProcedureAddress(hOle32Dll, "CoGetClassObject");
-	fnOrigCoGetClassObject = ::GetProcAddress(hOle32Dll, "CoGetClassObject");
+	LPVOID fnOrigCoGetClassObject = ::GetProcAddress(hOle32Dll, "CoGetClassObject");
 	if (fnOrigCoGetClassObject == NULL)
 	{
 		Print(L"Cannot get address of CoGetClassObject");
@@ -241,37 +274,8 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
 					      _In_  REFIID    riid,
 					      _Out_ LPVOID    *ppv)
 {
-  LPOLESTR szRclsIDAsString;
-  HRESULT hr;
+  bool bIsExcel = DumpCoCreateStyleCall(L"CoCreateInstance", rclsid);
 
-  CLSID aExcel;
-  hr = ::CLSIDFromProgID(L"Excel.Application", &aExcel);
-
-  const bool bIsExcel = !FAILED(hr) && memcmp(&rclsid, &aExcel, sizeof(aExcel)) == 0;
-
-  wchar_t message[100];
-  hr = ::StringFromCLSID(rclsid, &szRclsIDAsString);
-  if (!FAILED(hr))
-  {
-    LPOLESTR szRclsIDAsProgID;
-    hr = ::ProgIDFromCLSID(rclsid, &szRclsIDAsProgID);
-    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]), 
-				  L"CoCreateInstance(%s) (%s)%s", 
-				  szRclsIDAsString,
-				  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"),
-				  (bIsExcel ? L" (Is Excel!)" : L""));
-    CoTaskMemFree(szRclsIDAsString);
-    if (!FAILED(hr))
-      CoTaskMemFree(szRclsIDAsProgID);
-  }
-  else
-  {
-    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]), 
-				  L"CoCreateInstance on bogus CLSID?%s", 
-				  (bIsExcel ? L" (Is Excel!)" : L""));
-  }
-  Print(message);
-  
   HRESULT result = sCoCreateInstance_Hook.fnCoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
   if (!bIsExcel)
     return result;
@@ -286,36 +290,7 @@ static HRESULT WINAPI Hooked_CoCreateInstanceEx(_In_     REFCLSID     rclsid,
 						_In_     DWORD        dwCount,
 						_Inout_  MULTI_QI     *pResults)
 {
-  LPOLESTR szRclsIDAsString;
-  HRESULT hr;
-
-  CLSID aExcel;
-  hr = ::CLSIDFromProgID(L"Excel.Application", &aExcel);
-
-  const bool bIsExcel = !FAILED(hr) && memcmp(&rclsid, &aExcel, sizeof(aExcel)) == 0;
-
-  wchar_t message[100];
-  hr = ::StringFromCLSID(rclsid, &szRclsIDAsString);
-  if (!FAILED(hr))
-  {
-    LPOLESTR szRclsIDAsProgID;
-    hr = ::ProgIDFromCLSID(rclsid, &szRclsIDAsProgID);
-    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]), 
-				  L"CoCreateInstanceEx(%s) (%s)%s", 
-				  szRclsIDAsString,
-				  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"),
-				  (bIsExcel ? L" (Is Excel!)" : L""));
-    CoTaskMemFree(szRclsIDAsString);
-    if (!FAILED(hr))
-      CoTaskMemFree(szRclsIDAsProgID);
-  }
-  else
-  {
-    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]), 
-				  L"CoCreateInstanceEx on bogus CLSID?%s", 
-				  (bIsExcel ? L" (Is Excel!)" : L""));
-  }
-  Print(message);
+  bool bIsExcel = DumpCoCreateStyleCall(L"CoCreateInstanceEx", rclsid);
 
   HRESULT result = sCoCreateInstanceEx_Hook.fnCoCreateInstanceEx(rclsid, pUnkOuter, dwClsContext, pServerInfo, dwCount, pResults);
   if (!bIsExcel)
@@ -330,36 +305,7 @@ static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
 					      _In_     REFIID       riid,
 					      _Out_    LPVOID       *ppv)
 {
-  LPOLESTR szRclsIDAsString;
-  HRESULT hr;
-
-  CLSID aExcel;
-  hr = ::CLSIDFromProgID(L"Excel.Application", &aExcel);
-
-  const bool bIsExcel = !FAILED(hr) && memcmp(&rclsid, &aExcel, sizeof(aExcel)) == 0;
-
-  wchar_t message[100];
-  hr = ::StringFromCLSID(rclsid, &szRclsIDAsString);
-  if (!FAILED(hr))
-  {
-    LPOLESTR szRclsIDAsProgID;
-    hr = ::ProgIDFromCLSID(rclsid, &szRclsIDAsProgID);
-    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]), 
-				  L"CoGetClassObject(%s) (%s)%s", 
-				  szRclsIDAsString,
-				  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"),
-				  (bIsExcel ? L" (Is Excel!)" : L""));
-    CoTaskMemFree(szRclsIDAsString);
-    if (!FAILED(hr))
-      CoTaskMemFree(szRclsIDAsProgID);
-  }
-  else
-  {
-    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]), 
-				  L"CoGetClassObject on bogus CLSID?%s", 
-				  (bIsExcel ? L" (Is Excel!)" : L""));
-  }
-  Print(message);
+  bool bIsExcel = DumpCoCreateStyleCall(L"CoGetClassObject", rclsid);
 
   HRESULT result =  sCoGetClassObject_Hook.fnCoGetClassObject(rclsid, dwClsContext, pServerInfo, riid, ppv);
 
