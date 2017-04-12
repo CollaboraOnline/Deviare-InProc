@@ -34,6 +34,15 @@
 
 static CNktHookLib cHookMgr;
 
+struct HookedInvoke
+{
+  IDispatch *pdisp;
+  ITypeInfo *ptinfo;
+  HookedInvoke *next;
+};
+
+static HookedInvoke *pHookedInvokes = NULL;
+
 static void Print(char *string)
 {
   HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -233,7 +242,42 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 
   HRESULT result = sInvoke_Hook.fnInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
 
+  // Dump call
+  HookedInvoke *p = pHookedInvokes;
+  while (p != NULL && p->pdisp != This)
+    p = p->next;
+  if (p != NULL)
+  {
+    wchar_t message[100];
+
+    // Dump function name
+    BSTR name = SysAllocString(L"                                                       ");
+    UINT numNames;
+    if (!SUCCEEDED(p->ptinfo->GetNames(dispIdMember, &name, 1, &numNames)))
+      Print("  GetNames failed\n");
+
+    Print(name);
+    SysFreeString(name);
+    Print("(");
+
+    // Dump each parameter
+    // ...
+
+    // Done
+    Print(")\n");
+  }
+
   return result;
+}
+
+static void
+AddNewHookedInvoke(IDispatch *pdisp, ITypeInfo *pTInfo)
+{
+  HookedInvoke *p = new HookedInvoke;
+  p->pdisp = pdisp;
+  p->ptinfo = pTInfo;
+  p->next = pHookedInvokes;
+  pHookedInvokes = p;
 }
 
 static void
@@ -268,7 +312,7 @@ DoIDispatchMagic(IDispatch *pdisp)
 				  pFuncDesc->funckind,
 				  pFuncDesc->invkind);
     Print(message);
-
+    SysFreeString(name);
     pTInfo->ReleaseFuncDesc(pFuncDesc);
   }
 #endif
@@ -282,10 +326,11 @@ DoIDispatchMagic(IDispatch *pdisp)
 				0);
   char message[100];
   NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
-			       "Hooked IDIspatch of %x (old: %x)\n",
+			       "Hooked Invoke of %x (old: %x)\n",
 			       pdisp,
 			       sInvoke_Hook.fnInvoke);
   Print(message);
+  AddNewHookedInvoke(pdisp, pTInfo);
 }
 
 static void
@@ -381,7 +426,7 @@ static HRESULT WINAPI Hooked_CoCreateInstanceEx(_In_     REFCLSID     rclsid,
   if (SUCCEEDED(result))
   {
     Print("  results:\n");
-    for (int i = 0; i < dwCount; i++)
+    for (DWORD i = 0; i < dwCount; i++)
     {
       LPOLESTR szIidAsString;
       wchar_t message[100];
