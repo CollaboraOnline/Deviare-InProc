@@ -465,8 +465,6 @@ DoIDispatchMagic(IDispatch *pdisp)
 static void
 hookCoCreateInstance(void)
 {
-  ::MessageBoxW(NULL, L"Hey Ho", L"TestDll", MB_OK);
-
 	HINSTANCE hOle32Dll;
 	DWORD dwOsErr;
 
