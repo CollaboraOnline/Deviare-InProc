@@ -43,6 +43,16 @@ struct HookedInvoke
 
 static HookedInvoke *pHookedInvokes = NULL;
 
+static void
+AddNewHookedInvoke(IDispatch *pdisp, ITypeInfo *pTInfo)
+{
+  HookedInvoke *p = new HookedInvoke;
+  p->pdisp = pdisp;
+  p->ptinfo = pTInfo;
+  p->next = pHookedInvokes;
+  pHookedInvokes = p;
+}
+
 static void Print(char *string)
 {
   HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -65,6 +75,67 @@ static void Print(wchar_t *string)
     ::WriteFile(stdOut, buffer, buflen, &written, NULL);
   }
   delete[] buffer;
+}
+
+static void PrintVariant(VARIANT *pVariant)
+{
+  char value[100];
+  switch (pVariant->vt)
+    {
+    case VT_BOOL:
+      Print(pVariant->boolVal ? "TRUE" : "FALSE");
+      break;
+    case VT_BSTR:
+      Print("\"");
+      Print(pVariant->bstrVal);
+      Print("\"");
+      break;
+    case VT_DISPATCH:
+      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				   "IDispatch:%x",
+				   pVariant->pdispVal);
+      Print(value);
+      break;
+    case VT_I2:
+      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				   "%d",
+				   pVariant->iVal);
+      Print(value);
+      break;
+    case VT_I4:
+      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				   "%ld",
+				   pVariant->lVal);
+      Print(value);
+      break;
+    case VT_NULL:
+      Print("NULL");
+      break;
+    case VT_R4:
+      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				   "%g",
+				   pVariant->fltVal);
+      Print(value);
+      break;
+    case VT_R8:
+      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				   "%g",
+				   pVariant->dblVal);
+      Print(value);
+      break;
+    case VT_UNKNOWN:
+      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				   "IUnknown:%x",
+				   pVariant->punkVal);
+      Print(value);
+      break;
+    default:
+      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				   "unhandled variant %d",
+				   pVariant->vt);
+      Print(value);
+      break;
+    }
 }
 
 typedef HRESULT (WINAPI *lpfnCoCreateInstance)(_In_  REFCLSID  rclsid,
@@ -246,7 +317,9 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
   HookedInvoke *p = pHookedInvokes;
   while (p != NULL && p->pdisp != This)
     p = p->next;
-  if (p != NULL)
+  if (p == NULL)
+    Print("(not found)\n");
+  else
   {
     wchar_t message[100];
 
@@ -268,64 +341,43 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
     Print("(");
 
     // Dump each parameter
-    char value[100];
     for (UINT i = 0; i < pDispParams->cArgs; i++)
     {
-      switch (pDispParams->rgvarg[i].vt)
-      {
-      case VT_BOOL:
-	Print(pDispParams->rgvarg[i].boolVal ? "TRUE" : "FALSE");
-	break;
-      case VT_BSTR:
-	Print("\"");
-	Print(pDispParams->rgvarg[i].bstrVal);
-	Print("\"");
-	break;
-      case VT_I2:
-	NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				     "%d",
-				     pDispParams->rgvarg[i].iVal);
-	Print(value);
-	break;
-      case VT_I4:
-	NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				     "%ld",
-				     pDispParams->rgvarg[i].lVal);
-	Print(value);
-	break;
-      case VT_R4:
-	NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				     "%g",
-				     pDispParams->rgvarg[i].fltVal);
-	Print(value);
-	break;
-      case VT_R8:
-	NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				     "%g",
-				     pDispParams->rgvarg[i].dblVal);
-	Print(value);
-	break;
-      }
+      PrintVariant(&pDispParams->rgvarg[i]);
 
       if (i+1 < pDispParams->cArgs)
 	Print(",");
     }
 
-    // Done
-    Print(")\n");
+    // TODO: Named parameters
+
+    // Done with parameters
+    Print(")");
+
+    // Dump result
+    if (pVarResult != NULL)
+    {
+      if (pVarResult->vt != VT_EMPTY)
+	Print(" -> ");
+      PrintVariant(pVarResult);
+      if (pVarResult->vt == VT_DISPATCH)
+      {
+	ITypeInfo *pTInfo;
+
+	HRESULT hr = pVarResult->pdispVal->GetTypeInfo(0, MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT), &pTInfo);
+	if (FAILED(hr))
+	{
+	  Print("GetTypeInfo failed\n");
+	}
+	else
+	  AddNewHookedInvoke(pVarResult->pdispVal, pTInfo);
+      }
+    }
+    Print("\n");
+
   }
 
   return result;
-}
-
-static void
-AddNewHookedInvoke(IDispatch *pdisp, ITypeInfo *pTInfo)
-{
-  HookedInvoke *p = new HookedInvoke;
-  p->pdisp = pdisp;
-  p->ptinfo = pTInfo;
-  p->next = pHookedInvokes;
-  pHookedInvokes = p;
 }
 
 static void
