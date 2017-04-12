@@ -30,6 +30,8 @@
 #include "TestDll.h"
 #include "..\..\..\Include\NktHookLib.h"
 
+#define ARRAYLEN(a) (sizeof(a)/sizeof(*a))
+
 static CNktHookLib cHookMgr;
 
 static void Print(char *string)
@@ -39,7 +41,6 @@ static void Print(char *string)
   {
     DWORD written;
     ::WriteFile(stdOut, string, ::lstrlenA(string), &written, NULL);
-    ::WriteFile(stdOut, "\n", 1, &written, NULL);
   }
 }
 
@@ -53,7 +54,6 @@ static void Print(wchar_t *string)
   {
     DWORD written;
     ::WriteFile(stdOut, buffer, buflen, &written, NULL);
-    ::WriteFile(stdOut, "\n", 1, &written, NULL);
   }
   delete[] buffer;
 }
@@ -124,8 +124,8 @@ DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
   {
     LPOLESTR szRclsIDAsProgID;
     hr = ::ProgIDFromCLSID(rclsid, &szRclsIDAsProgID);
-    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]),
-				  L"%s(%s) (%s)",
+    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
+				  L"%s(%s) (%s)\n",
 				  api,
 				  szRclsIDAsString,
 				  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"));
@@ -135,8 +135,8 @@ DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
   }
   else
   {
-    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]),
-				  L"%s on bogus CLSID?",
+    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
+				  L"%s on bogus CLSID?\n",
 				  api);
   }
   Print(message);
@@ -225,6 +225,12 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 				    _Out_opt_  EXCEPINFO *pExcepInfo,
 				    _Out_opt_  UINT *puArgErr)
 {
+  char message[100];
+  NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
+			       "Hooked_Invoke This=%x\n",
+			       This);
+  Print(message);
+
   HRESULT result = sInvoke_Hook.fnInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
 
   return result;
@@ -233,18 +239,17 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 static void
 DoIDispatchMagic(IDispatch *pdisp)
 {
-  if (sInvoke_Hook.nHookId != 0)
-    return;
-
   ITypeInfo *pTInfo;
 
-  HRESULT hr = pdisp->GetTypeInfo(0, 0x0409, &pTInfo);
+  HRESULT hr = pdisp->GetTypeInfo(0, MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT), &pTInfo);
   if (FAILED(hr))
   {
-    Print("GetTypeInfo failed!");
+    Print("GetTypeInfo failed\n");
     return;
   }
 
+#if 0
+  // Test: Dump out function members
   UINT index = 0;
   FUNCDESC *pFuncDesc;
   while (SUCCEEDED(pTInfo->GetFuncDesc(index++, &pFuncDesc)))
@@ -254,10 +259,10 @@ DoIDispatchMagic(IDispatch *pdisp)
     BSTR name = SysAllocString(L"                                                       ");
     UINT numNames;
     if (!SUCCEEDED(pTInfo->GetNames(pFuncDesc->memid, &name, 1, &numNames)))
-      Print("  GetNames failed");
+      Print("  GetNames failed\n");
 
-    NktHookLibHelpers::swprintf_s(message, sizeof(message)/sizeof(message[0]),
-				  L"  Member %lx: %s kind: %d invoke: %d",
+    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
+				  L"  Member %lx: %s kind: %d invoke: %d\n",
 				  pFuncDesc->memid,
 				  name,
 				  pFuncDesc->funckind,
@@ -266,6 +271,7 @@ DoIDispatchMagic(IDispatch *pdisp)
 
     pTInfo->ReleaseFuncDesc(pFuncDesc);
   }
+#endif
 
   // Hook the Invoke
   LPVOID fnOrigInvoke = (*(IDispatchVtbl**)pdisp)->Invoke;
@@ -274,6 +280,12 @@ DoIDispatchMagic(IDispatch *pdisp)
 				fnOrigInvoke,
 				Hooked_Invoke,
 				0);
+  char message[100];
+  NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
+			       "Hooked IDIspatch of %x (old: %x)\n",
+			       pdisp,
+			       sInvoke_Hook.fnInvoke);
+  Print(message);
 }
 
 static void
@@ -287,14 +299,14 @@ hookCoCreateInstance(void)
 	hOle32Dll = NktHookLibHelpers::GetModuleBaseAddress(L"ole32.dll");
 	if (hOle32Dll == NULL)
 	{
-		Print("Cannot get handle of ole32.dll");
+		Print("Cannot get handle of ole32.dll\n");
 		return;
 	}
 
 	LPVOID fnOrigCoCreateInstance = ::GetProcAddress(hOle32Dll, "CoCreateInstance");
 	if (fnOrigCoCreateInstance == NULL)
 	{
-		Print("Cannot get address of CoCreateInstance");
+		Print("Cannot get address of CoCreateInstance\n");
 		return;
 	}
 
@@ -307,7 +319,7 @@ hookCoCreateInstance(void)
 	LPVOID fnOrigCoCreateInstanceEx = ::GetProcAddress(hOle32Dll, "CoCreateInstanceEx");
 	if (fnOrigCoCreateInstanceEx == NULL)
 	{
-		Print("Cannot get address of CoCreateInstanceEx");
+		Print("Cannot get address of CoCreateInstanceEx\n");
 		return;
 	}
 
@@ -320,7 +332,7 @@ hookCoCreateInstance(void)
 	LPVOID fnOrigCoGetClassObject = ::GetProcAddress(hOle32Dll, "CoGetClassObject");
 	if (fnOrigCoGetClassObject == NULL)
 	{
-		Print("Cannot get address of CoGetClassObject");
+		Print("Cannot get address of CoGetClassObject\n");
 		return;
 	}
 
@@ -341,6 +353,17 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
 
   HRESULT result = sCoCreateInstance_Hook.fnCoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
 
+  if (SUCCEEDED(result))
+  {
+    char message[100];
+    NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
+				 "  result:%x\n",
+				 *ppv);
+    Print(message);
+  }
+  else
+    Print("  failed\n");
+
   return result;
 }
 
@@ -355,6 +378,25 @@ static HRESULT WINAPI Hooked_CoCreateInstanceEx(_In_     REFCLSID     rclsid,
 
   HRESULT result = sCoCreateInstanceEx_Hook.fnCoCreateInstanceEx(rclsid, pUnkOuter, dwClsContext, pServerInfo, dwCount, pResults);
 
+  if (SUCCEEDED(result))
+  {
+    Print("  results:\n");
+    for (int i = 0; i < dwCount; i++)
+    {
+      LPOLESTR szIidAsString;
+      wchar_t message[100];
+      HRESULT hr = ::StringFromIID(*pResults[i].pIID, &szIidAsString);
+      NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
+				    L"    %s: %x%s\n",
+				    szIidAsString,
+				    pResults[i].pItf,
+				    (FAILED(pResults[i].hr) ? L" (failed)" : L""));
+      Print(message);
+    }
+  }
+  else
+    Print("  failed\n");
+
   return result;
 }
 
@@ -367,7 +409,14 @@ hookClassFactory(LPVOID pv)
   HRESULT hr = pfactory->CreateInstance(NULL, IID_IDispatch, (LPVOID *) &pdisp);
 
   if (SUCCEEDED(hr))
+  {
+    char message[100];
+    NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
+				 "  hookClassFactory: pdisp=%x\n",
+				 pdisp);
+    Print(message);
     DoIDispatchMagic(pdisp);
+  }
 }
 
 static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
@@ -378,10 +427,37 @@ static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
 {
   DumpCoCreateStyleCall(L"CoGetClassObject", rclsid);
 
-  HRESULT result =  sCoGetClassObject_Hook.fnCoGetClassObject(rclsid, dwClsContext, pServerInfo, riid, ppv);
+  LPOLESTR szRiidAsString;
+  wchar_t message[100];
+  HRESULT hr = ::StringFromIID(riid, &szRiidAsString);
+  if (SUCCEEDED(hr))
+  {
+    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
+				  L"  riid=%s\n",
+				  szRiidAsString);
+    CoTaskMemFree(szRiidAsString);
+  }
+  else
+  {
+    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
+				  L"%s on bogus REFIID?\n");
+  }
+  Print(message);
 
-  if (FAILED(result))
+  HRESULT result = sCoGetClassObject_Hook.fnCoGetClassObject(rclsid, dwClsContext, pServerInfo, riid, ppv);
+
+  if (SUCCEEDED(result))
+  {
+    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
+				  L"  result:%x\n",
+				  *ppv);
+    Print(message);
+  }
+  else
+  {
+    Print("  failed\n");
     return result;
+  }
 
   if (IsEqualGUID(riid, IID_IClassFactory))
     hookClassFactory(*ppv);
