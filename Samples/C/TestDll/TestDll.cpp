@@ -53,13 +53,34 @@ AddNewHookedInvoke(IDispatch *pdisp, ITypeInfo *pTInfo)
   pHookedInvokes = p;
 }
 
+static HANDLE GetOutputHandle()
+{
+  static bool beenHere = false;
+  static HANDLE result;
+
+  if (beenHere)
+    return result;
+
+  char filename[100];
+  if (::GetEnvironmentVariableA("DEVIARE_LOGFILE", filename, ARRAYLEN(filename)))
+  {
+    result = ::CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  }
+  else
+  {
+    result = GetStdHandle(STD_OUTPUT_HANDLE);
+  }
+  beenHere = true;
+  return result;
+}
+
 static void Print(char *string)
 {
-  HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-  if (stdOut != NULL && stdOut != INVALID_HANDLE_VALUE)
+  HANDLE output = GetOutputHandle();
+  if (output != NULL && output != INVALID_HANDLE_VALUE)
   {
     DWORD written;
-    ::WriteFile(stdOut, string, ::lstrlenA(string), &written, NULL);
+    ::WriteFile(output, string, ::lstrlenA(string), &written, NULL);
   }
 }
 
@@ -68,11 +89,11 @@ static void Print(wchar_t *string)
   int buflen = 4 * ::lstrlenW(string);
   char *buffer = new char[buflen];
   buflen = ::WideCharToMultiByte(CP_UTF8, 0, string, ::lstrlenW(string), buffer, buflen, NULL, NULL);
-  HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-  if (stdOut != NULL && stdOut != INVALID_HANDLE_VALUE)
+  HANDLE output = GetOutputHandle();
+  if (output != NULL && output != INVALID_HANDLE_VALUE)
   {
     DWORD written;
-    ::WriteFile(stdOut, buffer, buflen, &written, NULL);
+    ::WriteFile(output, buffer, buflen, &written, NULL);
   }
   delete[] buffer;
 }
@@ -326,8 +347,6 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
     Print("(not found)\n");
   else
   {
-    wchar_t message[100];
-
     // Dump function name
     BSTR name = SysAllocString(L"                                                       ");
     UINT numNames;
