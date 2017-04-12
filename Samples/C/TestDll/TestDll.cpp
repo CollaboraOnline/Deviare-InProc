@@ -498,6 +498,25 @@ hookCoCreateInstance(void)
 				NKTHOOKLIB_DisallowReentrancy);
 }
 
+static void
+hookClassFactory(LPVOID pv)
+{
+  IClassFactory *pfactory = (IClassFactory *) pv;
+
+  IDispatch *pdisp;
+  HRESULT hr = pfactory->CreateInstance(NULL, IID_IDispatch, (LPVOID *) &pdisp);
+
+  if (SUCCEEDED(hr))
+  {
+    char message[100];
+    NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
+				 "  hookClassFactory: pdisp=%x\n",
+				 pdisp);
+    Print(message);
+    DoIDispatchMagic(pdisp);
+  }
+}
+
 static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
 					      _In_  LPUNKNOWN pUnkOuter,
 					      _In_  DWORD     dwClsContext,
@@ -505,6 +524,23 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
 					      _Out_ LPVOID    *ppv)
 {
   DumpCoCreateStyleCall(L"CoCreateInstance", rclsid);
+
+  LPOLESTR szRiidAsString;
+  wchar_t message[100];
+  HRESULT hr = ::StringFromIID(riid, &szRiidAsString);
+  if (SUCCEEDED(hr))
+  {
+    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
+				  L"  riid=%s\n",
+				  szRiidAsString);
+    CoTaskMemFree(szRiidAsString);
+  }
+  else
+  {
+    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
+				  L"%s on bogus REFIID?\n");
+  }
+  Print(message);
 
   HRESULT result = sCoCreateInstance_Hook.fnCoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
 
@@ -517,8 +553,14 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
     Print(message);
   }
   else
+  {
     Print("  failed\n");
-
+    return result;
+  }
+#if 0 // Not sure about the necessity of this
+  if (IsEqualGUID(riid, IID_IClassFactory))
+    hookClassFactory(*ppv);
+#endif
   return result;
 }
 
@@ -553,25 +595,6 @@ static HRESULT WINAPI Hooked_CoCreateInstanceEx(_In_     REFCLSID     rclsid,
     Print("  failed\n");
 
   return result;
-}
-
-static void
-hookClassFactory(LPVOID pv)
-{
-  IClassFactory *pfactory = (IClassFactory *) pv;
-
-  IDispatch *pdisp;
-  HRESULT hr = pfactory->CreateInstance(NULL, IID_IDispatch, (LPVOID *) &pdisp);
-
-  if (SUCCEEDED(hr))
-  {
-    char message[100];
-    NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
-				 "  hookClassFactory: pdisp=%x\n",
-				 pdisp);
-    Print(message);
-    DoIDispatchMagic(pdisp);
-  }
 }
 
 static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
