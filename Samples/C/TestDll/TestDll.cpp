@@ -45,14 +45,17 @@ static void Print(char *string)
 
 static void Print(wchar_t *string)
 {
+  int buflen = 4 * ::lstrlenW(string);
+  char *buffer = new char[buflen];
+  buflen = ::WideCharToMultiByte(CP_UTF8, 0, string, ::lstrlenW(string), buffer, buflen, NULL, NULL);
   HANDLE stdOut = GetStdHandle(STD_OUTPUT_HANDLE);
   if (stdOut != NULL && stdOut != INVALID_HANDLE_VALUE)
   {
     DWORD written;
-    while (*string)
-      ::WriteFile(stdOut, string++, 1, &written, NULL);
+    ::WriteFile(stdOut, buffer, buflen, &written, NULL);
     ::WriteFile(stdOut, "\n", 1, &written, NULL);
   }
+  delete[] buffer;
 }
 
 typedef HRESULT (WINAPI *lpfnCoCreateInstance)(_In_  REFCLSID  rclsid,
