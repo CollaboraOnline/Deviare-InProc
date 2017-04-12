@@ -256,12 +256,60 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
     if (!SUCCEEDED(p->ptinfo->GetNames(dispIdMember, &name, 1, &numNames)))
       Print("  GetNames failed\n");
 
+    if (wFlags == DISPATCH_PROPERTYGET)
+      Print("get");
+    else if (wFlags == DISPATCH_PROPERTYPUT)
+      Print("put");
+    else if (wFlags == DISPATCH_PROPERTYPUTREF)
+      Print("putref");
+
     Print(name);
     SysFreeString(name);
     Print("(");
 
     // Dump each parameter
-    // ...
+    char value[100];
+    for (UINT i = 0; i < pDispParams->cArgs; i++)
+    {
+      switch (pDispParams->rgvarg[i].vt)
+      {
+      case VT_BOOL:
+	Print(pDispParams->rgvarg[i].boolVal ? "TRUE" : "FALSE");
+	break;
+      case VT_BSTR:
+	Print("\"");
+	Print(pDispParams->rgvarg[i].bstrVal);
+	Print("\"");
+	break;
+      case VT_I2:
+	NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				     "%d",
+				     pDispParams->rgvarg[i].iVal);
+	Print(value);
+	break;
+      case VT_I4:
+	NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				     "%ld",
+				     pDispParams->rgvarg[i].lVal);
+	Print(value);
+	break;
+      case VT_R4:
+	NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				     "%g",
+				     pDispParams->rgvarg[i].fltVal);
+	Print(value);
+	break;
+      case VT_R8:
+	NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
+				     "%g",
+				     pDispParams->rgvarg[i].dblVal);
+	Print(value);
+	break;
+      }
+
+      if (i+1 < pDispParams->cArgs)
+	Print(",");
+    }
 
     // Done
     Print(")\n");
