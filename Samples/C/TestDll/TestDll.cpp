@@ -129,6 +129,11 @@ static void PrintVariant(VARIANT *pVariant)
 				   pVariant->punkVal);
       Print(value);
       break;
+    case VT_VARIANT|VT_BYREF:
+      Print("{");
+      PrintVariant(pVariant->pvarVal);
+      Print("}");
+      break;
     default:
       NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
 				   "unhandled variant %d",
