@@ -422,19 +422,24 @@ DoIDispatchMagic(IDispatch *pdisp)
   }
 #endif
 
-  // Hook the Invoke
-  LPVOID fnOrigInvoke = (*(IDispatchVtbl**)pdisp)->Invoke;
-  DWORD dwOsErr = cHookMgr.Hook(&(sInvoke_Hook.nHookId),
-				(LPVOID *) &(sInvoke_Hook.fnInvoke),
-				fnOrigInvoke,
-				Hooked_Invoke,
-				0);
-  char message[100];
-  NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
-			       "Hooked Invoke of %x (old: %x)\n",
-			       pdisp,
-			       sInvoke_Hook.fnInvoke);
-  Print(message);
+  // Hook the Invoke. Be careful not to hook it twice? TODO: But what
+  // if two classes have different implementations of Invoke?
+  if (sInvoke_Hook.fnInvoke == NULL)
+  {
+    LPVOID fnOrigInvoke = (*(IDispatchVtbl**)pdisp)->Invoke;
+    DWORD dwOsErr = cHookMgr.Hook(&(sInvoke_Hook.nHookId),
+				  (LPVOID *) &(sInvoke_Hook.fnInvoke),
+				  fnOrigInvoke,
+				  Hooked_Invoke,
+				  0);
+    char message[100];
+    NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
+				 "Hooked Invoke of %x (old: %x) (orig: %x)\n",
+				 pdisp,
+				 sInvoke_Hook.fnInvoke,
+				 fnOrigInvoke);
+    Print(message);
+  }
   AddNewHookedInvoke(pdisp, pTInfo);
 }
 
