@@ -74,81 +74,71 @@ static HANDLE GetOutputHandle()
   return result;
 }
 
-static void Print(char *string)
+static void Print(char *format, ...)
 {
   HANDLE output = GetOutputHandle();
   if (output != NULL && output != INVALID_HANDLE_VALUE)
   {
+    char buffer[1000];
+    va_list argptr;
+    va_start(argptr, format);
+    NktHookLibHelpers::vsnprintf(buffer, ARRAYLEN(buffer), format, argptr);
+    va_end(argptr);
     DWORD written;
-    ::WriteFile(output, string, ::lstrlenA(string), &written, NULL);
+    ::WriteFile(output, buffer, ::lstrlenA(buffer), &written, NULL);
   }
 }
 
-static void Print(wchar_t *string)
+static void Print(wchar_t *format, ...)
 {
-  int buflen = 4 * ::lstrlenW(string);
-  char *buffer = new char[buflen];
-  buflen = ::WideCharToMultiByte(CP_UTF8, 0, string, ::lstrlenW(string), buffer, buflen, NULL, NULL);
   HANDLE output = GetOutputHandle();
   if (output != NULL && output != INVALID_HANDLE_VALUE)
   {
+    wchar_t wbuffer[1000];
+    va_list argptr;
+    va_start(argptr, format);
+    NktHookLibHelpers::vsnwprintf(wbuffer, ARRAYLEN(wbuffer), format, argptr);
+    va_end(argptr);
+    int buflen = 4 * ::lstrlenW(wbuffer);
+    char *buffer = new char[buflen];
+    buflen = ::WideCharToMultiByte(CP_UTF8, 0, wbuffer, ::lstrlenW(wbuffer), buffer, buflen, NULL, NULL);
     DWORD written;
     ::WriteFile(output, buffer, buflen, &written, NULL);
+    delete[] buffer;
   }
-  delete[] buffer;
 }
 
 static void PrintVariant(VARIANT *pVariant)
 {
-  char value[100];
   switch (pVariant->vt)
     {
     case VT_BOOL:
       Print(pVariant->boolVal ? "TRUE" : "FALSE");
       break;
     case VT_BSTR:
-      Print("\"");
-      Print(pVariant->bstrVal);
-      Print("\"");
+      Print(L"\"%s\"", pVariant->bstrVal);
       break;
     case VT_DISPATCH:
-      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				   "IDispatch:%x",
-				   pVariant->pdispVal);
-      Print(value);
+      Print("IDispatch:%x", pVariant->pdispVal);
       break;
     case VT_I2:
-      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				   "%d",
-				   pVariant->iVal);
-      Print(value);
+
+      Print("%d",pVariant->iVal);
       break;
     case VT_I4:
-      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				   "%ld",
-				   pVariant->lVal);
-      Print(value);
+      Print("%ld",pVariant->lVal);
       break;
     case VT_NULL:
       Print("NULL");
       break;
     case VT_R4:
-      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				   "%g",
-				   pVariant->fltVal);
-      Print(value);
+      Print("%g", pVariant->fltVal);
       break;
     case VT_R8:
-      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				   "%g",
-				   pVariant->dblVal);
-      Print(value);
+      Print("%g", pVariant->dblVal);
       break;
     case VT_UNKNOWN:
-      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				   "IUnknown:%x",
-				   pVariant->punkVal);
-      Print(value);
+      Print("IUnknown:%x", pVariant->punkVal);
       break;
     case VT_VARIANT|VT_BYREF:
       Print("{");
@@ -156,10 +146,7 @@ static void PrintVariant(VARIANT *pVariant)
       Print("}");
       break;
     default:
-      NktHookLibHelpers::sprintf_s(value, ARRAYLEN(value),
-				   "unhandled variant %d",
-				   pVariant->vt);
-      Print(value);
+      Print("unhandled variant %d", pVariant->vt);
       break;
     }
 }
@@ -224,28 +211,23 @@ DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
   LPOLESTR szRclsIDAsString;
   HRESULT hr;
 
-  wchar_t message[100];
   hr = ::StringFromCLSID(rclsid, &szRclsIDAsString);
   if (!FAILED(hr))
   {
     LPOLESTR szRclsIDAsProgID;
     hr = ::ProgIDFromCLSID(rclsid, &szRclsIDAsProgID);
-    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
-				  L"%s(%s) (%s)\n",
-				  api,
-				  szRclsIDAsString,
-				  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"));
+    Print(L"%s(%s) (%s)\n",
+	  api,
+	  szRclsIDAsString,
+	  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"));
     CoTaskMemFree(szRclsIDAsString);
     if (!FAILED(hr))
       CoTaskMemFree(szRclsIDAsProgID);
   }
   else
   {
-    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
-				  L"%s on bogus CLSID?\n",
-				  api);
+    Print(L"%s on bogus CLSID?\n", api);
   }
-  Print(message);
 }
 
 // From <oaidl.h>: The C style interface for IDispatch:
@@ -331,11 +313,7 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 				    _Out_opt_  EXCEPINFO *pExcepInfo,
 				    _Out_opt_  UINT *puArgErr)
 {
-  char message[100];
-  NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
-			       "Hooked_Invoke This=%x\n",
-			       This);
-  Print(message);
+  Print("Hooked_Invoke This=%x\n", This);
 
   HRESULT result = sInvoke_Hook.fnInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
 
@@ -422,20 +400,16 @@ DoIDispatchMagic(IDispatch *pdisp)
   FUNCDESC *pFuncDesc;
   while (SUCCEEDED(pTInfo->GetFuncDesc(index++, &pFuncDesc)))
   {
-    wchar_t message[100];
-
     BSTR name = SysAllocString(L"                                                       ");
     UINT numNames;
     if (!SUCCEEDED(pTInfo->GetNames(pFuncDesc->memid, &name, 1, &numNames)))
       Print("  GetNames failed\n");
 
-    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
-				  L"  Member %lx: %s kind: %d invoke: %d\n",
-				  pFuncDesc->memid,
-				  name,
-				  pFuncDesc->funckind,
-				  pFuncDesc->invkind);
-    Print(message);
+    Print(L"  Member %lx: %s kind: %d invoke: %d\n",
+	  pFuncDesc->memid,
+	  name,
+	  pFuncDesc->funckind,
+	  pFuncDesc->invkind);
     SysFreeString(name);
     pTInfo->ReleaseFuncDesc(pFuncDesc);
   }
@@ -451,13 +425,10 @@ DoIDispatchMagic(IDispatch *pdisp)
 				  fnOrigInvoke,
 				  Hooked_Invoke,
 				  0);
-    char message[100];
-    NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
-				 "Hooked Invoke of %x (old: %x) (orig: %x)\n",
-				 pdisp,
-				 sInvoke_Hook.fnInvoke,
-				 fnOrigInvoke);
-    Print(message);
+    Print("Hooked Invoke of %x (old: %x) (orig: %x)\n",
+	  pdisp,
+	  sInvoke_Hook.fnInvoke,
+	  fnOrigInvoke);
   }
   AddNewHookedInvoke(pdisp, pTInfo);
 }
@@ -525,11 +496,7 @@ hookClassFactory(LPVOID pv)
 
   if (SUCCEEDED(hr))
   {
-    char message[100];
-    NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
-				 "  hookClassFactory: pdisp=%x\n",
-				 pdisp);
-    Print(message);
+    Print("  hookClassFactory: pdisp=%x\n", pdisp);
     DoIDispatchMagic(pdisp);
   }
 }
@@ -543,31 +510,22 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
   DumpCoCreateStyleCall(L"CoCreateInstance", rclsid);
 
   LPOLESTR szRiidAsString;
-  wchar_t message[100];
   HRESULT hr = ::StringFromIID(riid, &szRiidAsString);
   if (SUCCEEDED(hr))
   {
-    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
-				  L"  riid=%s\n",
-				  szRiidAsString);
+    Print(L"  riid=%s\n", szRiidAsString);
     CoTaskMemFree(szRiidAsString);
   }
   else
   {
-    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
-				  L"%s on bogus REFIID?\n");
+    Print(L"%s on bogus REFIID?\n");
   }
-  Print(message);
 
   HRESULT result = sCoCreateInstance_Hook.fnCoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
 
   if (SUCCEEDED(result))
   {
-    char message[100];
-    NktHookLibHelpers::sprintf_s(message, ARRAYLEN(message),
-				 "  result:%x\n",
-				 *ppv);
-    Print(message);
+    Print("  result:%x\n", *ppv);
   }
   else
   {
@@ -598,14 +556,11 @@ static HRESULT WINAPI Hooked_CoCreateInstanceEx(_In_     REFCLSID     rclsid,
     for (DWORD i = 0; i < dwCount; i++)
     {
       LPOLESTR szIidAsString;
-      wchar_t message[100];
       HRESULT hr = ::StringFromIID(*pResults[i].pIID, &szIidAsString);
-      NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
-				    L"    %s: %x%s\n",
-				    szIidAsString,
-				    pResults[i].pItf,
-				    (FAILED(pResults[i].hr) ? L" (failed)" : L""));
-      Print(message);
+      Print(L"    %s: %x%s\n", 
+	    szIidAsString,
+	    pResults[i].pItf,
+	    (FAILED(pResults[i].hr) ? L" (failed)" : L""));
     }
   }
   else
@@ -623,30 +578,22 @@ static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
   DumpCoCreateStyleCall(L"CoGetClassObject", rclsid);
 
   LPOLESTR szRiidAsString;
-  wchar_t message[100];
   HRESULT hr = ::StringFromIID(riid, &szRiidAsString);
   if (SUCCEEDED(hr))
   {
-    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
-				  L"  riid=%s\n",
-				  szRiidAsString);
+    Print(L"  riid=%s\n", szRiidAsString);
     CoTaskMemFree(szRiidAsString);
   }
   else
   {
-    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
-				  L"%s on bogus REFIID?\n");
+    Print(L"%s on bogus REFIID?\n");
   }
-  Print(message);
 
   HRESULT result = sCoGetClassObject_Hook.fnCoGetClassObject(rclsid, dwClsContext, pServerInfo, riid, ppv);
 
   if (SUCCEEDED(result))
   {
-    NktHookLibHelpers::swprintf_s(message, ARRAYLEN(message),
-				  L"  result:%x\n",
-				  *ppv);
-    Print(message);
+    Print("  result:%x\n", *ppv);
   }
   else
   {
