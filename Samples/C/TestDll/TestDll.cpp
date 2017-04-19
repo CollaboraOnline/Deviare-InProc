@@ -428,7 +428,7 @@ DoIDispatchMagic(IDispatch *pdisp)
 				  (LPVOID *) &(sInvoke_Hook.fnInvoke),
 				  fnOrigInvoke,
 				  Hooked_Invoke,
-				  0);
+				  0); // FIXME: Or NKTHOOKLIB_DisallowReentrancy?
     Print("# Hooked Invoke of %x (old: %x) (orig: %x)\n",
 	  pdisp,
 	  sInvoke_Hook.fnInvoke,
@@ -457,6 +457,9 @@ hookCoCreateInstance(void)
 		return;
 	}
 
+	// FIXME: No idea whether that NKTHOOKLIB_DisallowReentrancy
+	// is useful or not here. Will leaving it out have any effect?
+	// And what about the other possible flags?
 	dwOsErr = cHookMgr.Hook(&(sCoCreateInstance_Hook.nHookId),
 				(LPVOID *)&(sCoCreateInstance_Hook.fnCoCreateInstance),
 				fnOrigCoCreateInstance,
