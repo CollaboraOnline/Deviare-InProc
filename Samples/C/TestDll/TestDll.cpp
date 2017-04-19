@@ -43,7 +43,7 @@ struct HookedInvoke
 
 static HookedInvoke *pHookedInvokes = NULL;
 
-static void
+static HookedInvoke *
 AddNewHookedInvoke(IDispatch *pdisp, ITypeInfo *pTInfo)
 {
   HookedInvoke *p = new HookedInvoke;
@@ -51,6 +51,7 @@ AddNewHookedInvoke(IDispatch *pdisp, ITypeInfo *pTInfo)
   p->ptinfo = pTInfo;
   p->next = pHookedInvokes;
   pHookedInvokes = p;
+  return pHookedInvokes;
 }
 
 static HANDLE GetOutputHandle()
@@ -329,6 +330,18 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
   HookedInvoke *p = pHookedInvokes;
   while (p != NULL && p->pdisp != This)
     p = p->next;
+  if (p == NULL)
+  {
+    ITypeInfo *pTInfo;
+
+    HRESULT hr = This->GetTypeInfo(0, MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT), &pTInfo);
+    if (FAILED(hr))
+    {
+      Print("GetTypeInfo failed\n");
+    }
+    else
+      p = AddNewHookedInvoke(This, pTInfo);
+  }
   if (p == NULL)
     Print("?\n");
   else
