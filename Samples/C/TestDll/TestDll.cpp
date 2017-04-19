@@ -199,11 +199,13 @@ static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
 					      _In_     REFIID       riid,
 					      _Out_    LPVOID       *ppv);
 
-
 static struct {
   SIZE_T nHookId;
   lpfnCoGetClassObject fnCoGetClassObject;
 } sCoGetClassObject_Hook = { 0, NULL };
+
+constexpr int INDENT_STEP = 2;
+static int recursionIndent = 0;
 
 static void
 DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
@@ -216,7 +218,8 @@ DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
   {
     LPOLESTR szRclsIDAsProgID;
     hr = ::ProgIDFromCLSID(rclsid, &szRclsIDAsProgID);
-    Print(L"# %s(%s) (%s)\n",
+    Print(L"#%*.s %s(%s) (%s)\n",
+	  recursionIndent, L"",
 	  api,
 	  szRclsIDAsString,
 	  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"));
@@ -313,11 +316,15 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 				    _Out_opt_  EXCEPINFO *pExcepInfo,
 				    _Out_opt_  UINT *puArgErr)
 {
+  recursionIndent += INDENT_STEP;
+
   HRESULT result = sInvoke_Hook.fnInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
+
+  recursionIndent -= INDENT_STEP;
 
   // Dump call
 
-  Print("%x:", This);
+  Print("%*.s%x:", recursionIndent, "", This);
 
   HookedInvoke *p = pHookedInvokes;
   while (p != NULL && p->pdisp != This)
@@ -380,7 +387,6 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
       }
     }
     Print("\n");
-
   }
 
   return result;
@@ -520,23 +526,33 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
   HRESULT hr = ::StringFromIID(riid, &szRiidAsString);
   if (SUCCEEDED(hr))
   {
-    Print(L"#  riid=%s\n", szRiidAsString);
+    Print(L"#%*.s   riid=%s\n",
+	  recursionIndent, L"",
+	  szRiidAsString);
     CoTaskMemFree(szRiidAsString);
   }
   else
   {
-    Print(L"#  on bogus REFIID?\n");
+    Print("#%*.s   on bogus REFIID?\n",
+	  recursionIndent, "");
   }
+
+  recursionIndent += INDENT_STEP;
 
   HRESULT result = sCoCreateInstance_Hook.fnCoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
 
+  recursionIndent -= INDENT_STEP;
+
   if (SUCCEEDED(result))
   {
-    Print("#  result:%x\n", *ppv);
+    Print("#%*.s   result:%x\n",
+	  recursionIndent, "",
+	  *ppv);
   }
   else
   {
-    Print("#  failed\n");
+    Print("#%*.s   failed\n",
+	  recursionIndent, "");
     return result;
   }
 #if 0 // Not sure about the necessity of this
@@ -555,11 +571,16 @@ static HRESULT WINAPI Hooked_CoCreateInstanceEx(_In_     REFCLSID     rclsid,
 {
   DumpCoCreateStyleCall(L"CoCreateInstanceEx", rclsid);
 
+  recursionIndent += INDENT_STEP;
+
   HRESULT result = sCoCreateInstanceEx_Hook.fnCoCreateInstanceEx(rclsid, pUnkOuter, dwClsContext, pServerInfo, dwCount, pResults);
+
+  recursionIndent -= INDENT_STEP;
 
   if (SUCCEEDED(result))
   {
-    Print("#  results:\n");
+    Print("#%*.s  results:\n",
+	  recursionIndent, "");
     for (DWORD i = 0; i < dwCount; i++)
     {
       LPOLESTR szIidAsString;
@@ -588,23 +609,33 @@ static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
   HRESULT hr = ::StringFromIID(riid, &szRiidAsString);
   if (SUCCEEDED(hr))
   {
-    Print(L"#  riid=%s\n", szRiidAsString);
+    Print(L"#%*.s   riid=%s\n",
+	  recursionIndent, L"",
+	  szRiidAsString);
     CoTaskMemFree(szRiidAsString);
   }
   else
   {
-    Print(L"#  on bogus REFIID?\n");
+    Print("#%*.s   on bogus REFIID?\n",
+	  recursionIndent, "");
   }
+
+  recursionIndent += INDENT_STEP;
 
   HRESULT result = sCoGetClassObject_Hook.fnCoGetClassObject(rclsid, dwClsContext, pServerInfo, riid, ppv);
 
+  recursionIndent -= INDENT_STEP;
+
   if (SUCCEEDED(result))
   {
-    Print("#  result:%x\n", *ppv);
+    Print("#%*.s   result:%x\n",
+	  recursionIndent, "",
+	  *ppv);
   }
   else
   {
-    Print("#  failed\n");
+    Print("#%*.s   failed\n",
+	  recursionIndent, "");
     return result;
   }
 
