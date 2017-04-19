@@ -216,7 +216,7 @@ DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
   {
     LPOLESTR szRclsIDAsProgID;
     hr = ::ProgIDFromCLSID(rclsid, &szRclsIDAsProgID);
-    Print(L"%s(%s) (%s)\n",
+    Print(L"# %s(%s) (%s)\n",
 	  api,
 	  szRclsIDAsString,
 	  (!FAILED(hr) ? szRclsIDAsProgID : L"unknown"));
@@ -226,7 +226,7 @@ DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
   }
   else
   {
-    Print(L"%s on bogus CLSID?\n", api);
+    Print(L"# %s on bogus CLSID?\n", api);
   }
 }
 
@@ -313,23 +313,27 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 				    _Out_opt_  EXCEPINFO *pExcepInfo,
 				    _Out_opt_  UINT *puArgErr)
 {
-  Print("Hooked_Invoke This=%x\n", This);
-
   HRESULT result = sInvoke_Hook.fnInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
 
   // Dump call
+
+  Print("%x:", This);
+
   HookedInvoke *p = pHookedInvokes;
   while (p != NULL && p->pdisp != This)
     p = p->next;
   if (p == NULL)
-    Print("(not found)\n");
+    Print("?\n");
   else
   {
     // Dump function name
     BSTR name = SysAllocString(L"                                                       ");
     UINT numNames;
     if (!SUCCEEDED(p->ptinfo->GetNames(dispIdMember, &name, 1, &numNames)))
-      Print("  GetNames failed\n");
+    {
+      SysFreeString(name);
+      name = SysAllocString(L"?");
+    }
 
     if (wFlags == DISPATCH_PROPERTYGET)
       Print("get");
@@ -425,7 +429,7 @@ DoIDispatchMagic(IDispatch *pdisp)
 				  fnOrigInvoke,
 				  Hooked_Invoke,
 				  0);
-    Print("Hooked Invoke of %x (old: %x) (orig: %x)\n",
+    Print("# Hooked Invoke of %x (old: %x) (orig: %x)\n",
 	  pdisp,
 	  sInvoke_Hook.fnInvoke,
 	  fnOrigInvoke);
@@ -496,7 +500,7 @@ hookClassFactory(LPVOID pv)
 
   if (SUCCEEDED(hr))
   {
-    Print("  hookClassFactory: pdisp=%x\n", pdisp);
+    Print("#  hookClassFactory: pdisp=%x\n", pdisp);
     DoIDispatchMagic(pdisp);
   }
 }
@@ -513,23 +517,23 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
   HRESULT hr = ::StringFromIID(riid, &szRiidAsString);
   if (SUCCEEDED(hr))
   {
-    Print(L"  riid=%s\n", szRiidAsString);
+    Print(L"#  riid=%s\n", szRiidAsString);
     CoTaskMemFree(szRiidAsString);
   }
   else
   {
-    Print(L"%s on bogus REFIID?\n");
+    Print(L"#  on bogus REFIID?\n");
   }
 
   HRESULT result = sCoCreateInstance_Hook.fnCoCreateInstance(rclsid, pUnkOuter, dwClsContext, riid, ppv);
 
   if (SUCCEEDED(result))
   {
-    Print("  result:%x\n", *ppv);
+    Print("#  result:%x\n", *ppv);
   }
   else
   {
-    Print("  failed\n");
+    Print("#  failed\n");
     return result;
   }
 #if 0 // Not sure about the necessity of this
@@ -552,19 +556,19 @@ static HRESULT WINAPI Hooked_CoCreateInstanceEx(_In_     REFCLSID     rclsid,
 
   if (SUCCEEDED(result))
   {
-    Print("  results:\n");
+    Print("#  results:\n");
     for (DWORD i = 0; i < dwCount; i++)
     {
       LPOLESTR szIidAsString;
       HRESULT hr = ::StringFromIID(*pResults[i].pIID, &szIidAsString);
-      Print(L"    %s: %x%s\n", 
+      Print(L"#    %s: %x%s\n", 
 	    szIidAsString,
 	    pResults[i].pItf,
 	    (FAILED(pResults[i].hr) ? L" (failed)" : L""));
     }
   }
   else
-    Print("  failed\n");
+    Print("#  failed\n");
 
   return result;
 }
@@ -581,23 +585,23 @@ static HRESULT WINAPI Hooked_CoGetClassObject(_In_     REFCLSID     rclsid,
   HRESULT hr = ::StringFromIID(riid, &szRiidAsString);
   if (SUCCEEDED(hr))
   {
-    Print(L"  riid=%s\n", szRiidAsString);
+    Print(L"#  riid=%s\n", szRiidAsString);
     CoTaskMemFree(szRiidAsString);
   }
   else
   {
-    Print(L"%s on bogus REFIID?\n");
+    Print(L"#  on bogus REFIID?\n");
   }
 
   HRESULT result = sCoGetClassObject_Hook.fnCoGetClassObject(rclsid, dwClsContext, pServerInfo, riid, ppv);
 
   if (SUCCEEDED(result))
   {
-    Print("  result:%x\n", *ppv);
+    Print("#  result:%x\n", *ppv);
   }
   else
   {
-    Print("  failed\n");
+    Print("#  failed\n");
     return result;
   }
 
