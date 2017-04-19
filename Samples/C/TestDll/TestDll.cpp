@@ -123,7 +123,6 @@ static void PrintVariant(VARIANT *pVariant)
       Print("IDispatch:%x", pVariant->pdispVal);
       break;
     case VT_I2:
-
       Print("%d",pVariant->iVal);
       break;
     case VT_I4:
