@@ -44,6 +44,15 @@ struct HookedInvoke
 static HookedInvoke *pHookedInvokes = NULL;
 
 static HookedInvoke *
+FindHookedInvoke(IDispatch *pdisp)
+{
+  HookedInvoke *p = pHookedInvokes;
+  while (p != NULL && p->pdisp != pdisp)
+    p = p->next;
+  return p;
+}
+
+static HookedInvoke *
 AddNewHookedInvoke(IDispatch *pdisp, ITypeInfo *pTInfo)
 {
   HookedInvoke *p = new HookedInvoke;
@@ -52,6 +61,21 @@ AddNewHookedInvoke(IDispatch *pdisp, ITypeInfo *pTInfo)
   p->next = pHookedInvokes;
   pHookedInvokes = p;
   return pHookedInvokes;
+}
+
+static HookedInvoke *
+MaybeAddHookedInvoke(IDispatch *pdisp)
+{
+  HookedInvoke *p = FindHookedInvoke(pdisp);
+  if (p != NULL)
+    return p;
+
+  ITypeInfo *pTInfo;
+  HRESULT hr = pdisp->GetTypeInfo(0, MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT), &pTInfo);
+  if (FAILED(hr))
+    return NULL;
+
+  return AddNewHookedInvoke(pdisp, pTInfo);
 }
 
 static HANDLE GetOutputHandle()
@@ -121,6 +145,8 @@ static void PrintVariant(VARIANT *pVariant)
       break;
     case VT_DISPATCH:
       Print("IDispatch:%x", pVariant->pdispVal);
+      if (MaybeAddHookedInvoke(pVariant->pdispVal) == NULL)
+	Print("(?)");
       break;
     case VT_I2:
       Print("%d",pVariant->iVal);
@@ -326,21 +352,7 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 
   Print("%*.s%x:", recursionIndent, "", This);
 
-  HookedInvoke *p = pHookedInvokes;
-  while (p != NULL && p->pdisp != This)
-    p = p->next;
-  if (p == NULL)
-  {
-    ITypeInfo *pTInfo;
-
-    HRESULT hr = This->GetTypeInfo(0, MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT), &pTInfo);
-    if (FAILED(hr))
-    {
-      Print("GetTypeInfo failed\n");
-    }
-    else
-      p = AddNewHookedInvoke(This, pTInfo);
-  }
+  HookedInvoke *p = MaybeAddHookedInvoke(This);
   if (p == NULL)
     Print("?\n");
   else
@@ -385,18 +397,6 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
       if (pVarResult->vt != VT_EMPTY)
 	Print(" -> ");
       PrintVariant(pVarResult);
-      if (pVarResult->vt == VT_DISPATCH)
-      {
-	ITypeInfo *pTInfo;
-
-	HRESULT hr = pVarResult->pdispVal->GetTypeInfo(0, MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT), &pTInfo);
-	if (FAILED(hr))
-	{
-	  Print("GetTypeInfo failed\n");
-	}
-	else
-	  AddNewHookedInvoke(pVarResult->pdispVal, pTInfo);
-      }
     }
     Print("\n");
   }
