@@ -317,39 +317,23 @@ typedef struct
     END_INTERFACE
 } IDispatchVtbl;
 
-typedef HRESULT (WINAPI *lpfnInvoke)(IDispatch *This,
-				     _In_  DISPID dispIdMember,
-				     _In_  REFIID riid,
-				     _In_  LCID lcid,
-				     _In_  WORD wFlags,
-				     _In_  DISPPARAMS *pDispParams,
-				     _Out_opt_  VARIANT *pVarResult,
-				     _Out_opt_  EXCEPINFO *pExcepInfo,
-				     _Out_opt_  UINT *puArgErr);
-
-static struct {
-  SIZE_T nHookId;
-  lpfnInvoke fnInvoke;
-} sInvoke_Hook = { 0, NULL };
-
-static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
-				    _In_  DISPID dispIdMember,
-				    _In_  REFIID riid,
-				    _In_  LCID lcid,
-				    _In_  WORD wFlags,
-				    _In_  DISPPARAMS *pDispParams,
-				    _Out_opt_  VARIANT *pVarResult,
-				    _Out_opt_  EXCEPINFO *pExcepInfo,
-				    _Out_opt_  UINT *puArgErr)
+static HookedInvoke *DumpPreInvoke(IDispatch *This,
+				   DISPID dispIdMember,
+				   REFIID riid,
+				   LCID lcid,
+				   WORD wFlags,
+				   DISPPARAMS *pDispParams,
+				   VARIANT *pVarResult,
+				   EXCEPINFO *pExcepInfo,
+				   UINT *puArgErr,
+				   bool &hasByRefParameters)
 {
-  // Dump call
-
   if (recursionIndent > 0)
     Print("\n");
 
   Print("%*.s%x:", recursionIndent, "", This);
 
-  bool hasByRefParameters = false;
+  hasByRefParameters = false;
 
   HookedInvoke *p = MaybeAddHookedInvoke(This);
   if (p == NULL)
@@ -392,16 +376,24 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 
     Print(")");
   }
+  return p;
+}
 
-  recursionIndent += INDENT_STEP;
-
-  HRESULT result = sInvoke_Hook.fnInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
-
-  recursionIndent -= INDENT_STEP;
-
+static void DumpPostInvoke(HookedInvoke *p,
+			   IDispatch *This,
+			   DISPID dispIdMember,
+			   REFIID riid,
+			   LCID lcid,
+			   WORD wFlags,
+			   DISPPARAMS *pDispParams,
+			   VARIANT *pVarResult,
+			   EXCEPINFO *pExcepInfo,
+			   UINT *puArgErr,
+			   bool hasByRefParameters)
+{
   if (p != NULL)
   {
-    // Dump potentially changed reference parameters and result after call
+    // Dump potentially changed reference parameters and return value after call
 
     if (hasByRefParameters)
     {
@@ -430,10 +422,92 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
   if (recursionIndent > 0)
     Print("%*.s",
 	  recursionIndent, "");
-
-  return result;
 }
 
+typedef HRESULT (WINAPI *lpfnInvoke)(IDispatch *This,
+				     _In_  DISPID dispIdMember,
+				     _In_  REFIID riid,
+				     _In_  LCID lcid,
+				     _In_  WORD wFlags,
+				     _In_  DISPPARAMS *pDispParams,
+				     _Out_opt_  VARIANT *pVarResult,
+				     _Out_opt_  EXCEPINFO *pExcepInfo,
+				     _Out_opt_  UINT *puArgErr);
+
+#define HOOK_COUNT 8
+static struct {
+  SIZE_T nHookId[HOOK_COUNT]; // id of the hook.
+  lpfnInvoke fnHooks[HOOK_COUNT]; // hook / proxy functions
+  lpfnInvoke fnInvokes[HOOK_COUNT];
+  LPVOID fnOrigInvokes[HOOK_COUNT]; // original functions
+} sInvoke_Hook;
+
+static void InitGlobals()
+{
+  for (int i = 0; i < HOOK_COUNT; ++i)
+  {
+    sInvoke_Hook.nHookId[i] = 0;
+    sInvoke_Hook.fnHooks[i] = NULL;
+    sInvoke_Hook.fnInvokes[i] = NULL;
+    sInvoke_Hook.fnOrigInvokes[i] = NULL;
+  }
+}
+
+/// We need to generate lots of these in order to hook more
+/// than one impl. of IDispatch - would be nice if Deviare could be
+/// tweaked to helped with this - it has trampoline generation code ...
+#define GENERATE_INVOKE(i) \
+static HRESULT WINAPI Hooked_Invoke_##i(IDispatch *This, \
+				       _In_  DISPID dispIdMember, \
+				       _In_  REFIID riid, \
+				       _In_  LCID lcid, \
+				       _In_  WORD wFlags, \
+				       _In_  DISPPARAMS *pDispParams, \
+				       _Out_opt_  VARIANT *pVarResult, \
+				       _Out_opt_  EXCEPINFO *pExcepInfo, \
+				       _Out_opt_  UINT *puArgErr) \
+{ \
+  bool hasByRefParameters; \
+  HookedInvoke *p = DumpPreInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr, hasByRefParameters); \
+  recursionIndent += INDENT_STEP; \
+  \
+  HRESULT result = sInvoke_Hook.fnInvokes[(i)](This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr); \
+  \
+  recursionIndent -= INDENT_STEP; \
+  \
+  DumpPostInvoke(p, This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr, hasByRefParameters); \
+  \
+  return result; \
+}
+
+GENERATE_INVOKE(0)
+GENERATE_INVOKE(1)
+GENERATE_INVOKE(2)
+GENERATE_INVOKE(3)
+GENERATE_INVOKE(4)
+GENERATE_INVOKE(5)
+GENERATE_INVOKE(6)
+GENERATE_INVOKE(7)
+
+#undef GENERATE_INVOKE
+
+static void SetupInvokes()
+{
+#define ASSIGN(i) \
+  sInvoke_Hook.fnHooks[i] = Hooked_Invoke_##i
+
+  ASSIGN(0);
+  ASSIGN(1);
+  ASSIGN(2);
+  ASSIGN(3);
+  ASSIGN(4);
+  ASSIGN(5);
+  ASSIGN(6);
+  ASSIGN(7);
+
+#undef ASSIGN
+}
+ 
 static void
 DoIDispatchMagic(IDispatch *pdisp)
 {
@@ -467,21 +541,38 @@ DoIDispatchMagic(IDispatch *pdisp)
   }
 #endif
 
-  // Hook the Invoke. Be careful not to hook it twice? TODO: But what
-  // if two classes have different implementations of Invoke?
-  if (sInvoke_Hook.fnInvoke == NULL)
+  LPVOID fnOrigInvoke = (*(IDispatchVtbl**)pdisp)->Invoke;
+
+  // Are we already hooked ?
+  int i;
+  for (i = 0; i < HOOK_COUNT; ++i)
   {
-    LPVOID fnOrigInvoke = (*(IDispatchVtbl**)pdisp)->Invoke;
-    DWORD dwOsErr = cHookMgr.Hook(&(sInvoke_Hook.nHookId),
-				  (LPVOID *) &(sInvoke_Hook.fnInvoke),
-				  fnOrigInvoke,
-				  Hooked_Invoke,
-				  0); // FIXME: Or NKTHOOKLIB_DisallowReentrancy?
-    Print("# Hooked Invoke of %x (old: %x) (orig: %x)\n",
-	  pdisp,
-	  sInvoke_Hook.fnInvoke,
-	  fnOrigInvoke);
+     if (sInvoke_Hook.fnOrigInvokes[i] == fnOrigInvoke)
+       return; // already hooked.
+     if (sInvoke_Hook.fnInvokes[i] == NULL)
+       break;
   }
+  if (i >= HOOK_COUNT)
+  {
+     Print("All hooks exhausted !\n");
+     return;
+  }
+
+  sInvoke_Hook.fnOrigInvokes[i] = fnOrigInvoke;
+
+  DWORD dwOsErr = cHookMgr.Hook(&(sInvoke_Hook.nHookId[i]),
+				(LPVOID *) &(sInvoke_Hook.fnInvokes[i]),
+				fnOrigInvoke,
+				sInvoke_Hook.fnHooks[i],
+				0); // FIXME: Or NKTHOOKLIB_DisallowReentrancy?
+
+  Print("# %s Invoke %d of %x (old: %x) (orig: %x)\n",
+	(dwOsErr == ERROR_SUCCESS ? "Hooked" : "Failed to hook"),
+	i,
+	pdisp,
+	sInvoke_Hook.fnInvokes[i],
+	fnOrigInvoke);
+
   AddNewHookedInvoke(pdisp, pTInfo);
 }
 
@@ -490,6 +581,9 @@ hookCoCreateInstance(void)
 {
 	HINSTANCE hOle32Dll;
 	DWORD dwOsErr;
+
+	InitGlobals();
+	SetupInvokes();
 
 	hOle32Dll = NktHookLibHelpers::GetModuleBaseAddress(L"ole32.dll");
 	if (hOle32Dll == NULL)
@@ -551,7 +645,6 @@ hookClassFactory(LPVOID pv)
 
   if (SUCCEEDED(hr))
   {
-    Print("#  hookClassFactory: pdisp=%x\n", pdisp);
     DoIDispatchMagic(pdisp);
   }
 }
