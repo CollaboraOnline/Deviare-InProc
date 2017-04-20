@@ -342,19 +342,18 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 				    _Out_opt_  EXCEPINFO *pExcepInfo,
 				    _Out_opt_  UINT *puArgErr)
 {
-  recursionIndent += INDENT_STEP;
-
-  HRESULT result = sInvoke_Hook.fnInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
-
-  recursionIndent -= INDENT_STEP;
-
   // Dump call
+
+  if (recursionIndent > 0)
+    Print("\n");
 
   Print("%*.s%x:", recursionIndent, "", This);
 
+  bool hasByRefParameters = false;
+
   HookedInvoke *p = MaybeAddHookedInvoke(This);
   if (p == NULL)
-    Print("?\n");
+    Print("?");
   else
   {
     // Dump function name
@@ -377,9 +376,12 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
     SysFreeString(name);
     Print("(");
 
-    // Dump each parameter
+    // Dump each parameter before call
     for (UINT i = 0; i < pDispParams->cArgs; i++)
     {
+      if (pDispParams->rgvarg[i].vt & VT_BYREF)
+	hasByRefParameters = true;
+
       PrintVariant(&pDispParams->rgvarg[i]);
 
       if (i+1 < pDispParams->cArgs)
@@ -388,18 +390,46 @@ static HRESULT WINAPI Hooked_Invoke(IDispatch *This,
 
     // TODO: Named parameters
 
-    // Done with parameters
     Print(")");
+  }
 
-    // Dump result
-    if (pVarResult != NULL)
+  recursionIndent += INDENT_STEP;
+
+  HRESULT result = sInvoke_Hook.fnInvoke(This, dispIdMember, riid, lcid, wFlags, pDispParams, pVarResult, pExcepInfo, puArgErr);
+
+  recursionIndent -= INDENT_STEP;
+
+  if (p != NULL)
+  {
+    // Dump potentially changed reference parameters and result after call
+
+    if (hasByRefParameters)
     {
-      if (pVarResult->vt != VT_EMPTY)
-	Print(" -> ");
+      Print(" : (");
+      for (UINT i = 0; i < pDispParams->cArgs; i++)
+      {
+	if (pDispParams->rgvarg[i].vt & VT_BYREF)
+	  hasByRefParameters = true;
+
+	PrintVariant(&pDispParams->rgvarg[i]);
+
+	if (i+1 < pDispParams->cArgs)
+	  Print(",");
+      }
+      Print(")");
+    }
+
+    if (pVarResult != NULL && pVarResult->vt != VT_EMPTY)
+    {
+      Print(" -> ");
       PrintVariant(pVarResult);
     }
-    Print("\n");
   }
+  Print("\n");
+
+  if (recursionIndent > 0)
+    Print("%*.s",
+	  recursionIndent, "");
 
   return result;
 }
