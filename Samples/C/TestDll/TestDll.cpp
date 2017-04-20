@@ -231,7 +231,7 @@ static struct {
 } sCoGetClassObject_Hook = { 0, NULL };
 
 constexpr int INDENT_STEP = 2;
-static int recursionIndent = 0;
+static __declspec(thread) int recursionIndent = 0;
 
 static void
 DumpCoCreateStyleCall(wchar_t *api, REFCLSID rclsid)
