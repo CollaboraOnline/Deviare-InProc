@@ -548,7 +548,10 @@ DoIDispatchMagic(IDispatch *pdisp)
   for (i = 0; i < HOOK_COUNT; ++i)
   {
      if (sInvoke_Hook.fnOrigInvokes[i] == fnOrigInvoke)
-       return; // already hooked.
+     {
+       Print("# Already hooked\n");
+       return;
+     }
      if (sInvoke_Hook.fnInvokes[i] == NULL)
        break;
   }
@@ -643,7 +646,11 @@ hookClassFactory(LPVOID pv)
   IDispatch *pdisp;
   HRESULT hr = pfactory->CreateInstance(NULL, IID_IDispatch, (LPVOID *) &pdisp);
 
-  if (SUCCEEDED(hr))
+  if (FAILED(hr))
+  {
+    Print("# Failed to create IDispatch instance\n");
+  }
+  else
   {
     DoIDispatchMagic(pdisp);
   }
@@ -690,10 +697,10 @@ static HRESULT WINAPI Hooked_CoCreateInstance(_In_  REFCLSID  rclsid,
 	  recursionIndent, "");
     return result;
   }
-#if 0 // Not sure about the necessity of this
+
   if (IsEqualGUID(riid, IID_IClassFactory))
     hookClassFactory(*ppv);
-#endif
+
   return result;
 }
 
