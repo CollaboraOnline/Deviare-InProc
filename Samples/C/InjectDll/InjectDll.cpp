@@ -32,6 +32,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "..\..\..\Include\NktHookLib.h"
 
 //-----------------------------------------------------------
@@ -75,13 +76,14 @@ static LPSTR ToAnsi(__in_z LPCWSTR sW);
 int __CRTDECL wmain(__in int argc, __in wchar_t *argv[], __in wchar_t *envp[])
 {
   DWORD dwOsErr, dwPid;
-  LPWSTR szExeNameW, szDllToInjectNameW;
+  LPWSTR szExeNameW;
   LPWSTR szCommandArgumentsW;
+  WCHAR szDllToInjectNameW[MAX_PATH];
 
   //check arguments
-  if (argc < 3)
+  if (argc < 2)
   {
-    wprintf_s(L"Use: InjectDLL path-to-exe|process-id path-to-dll [\"command arguments\"]\n");
+    wprintf_s(L"Use: InjectDLL path-to-exe|process-id [\"command arguments\"]\n");
     return 1;
   }
   //if first argument is numeric, assume a process ID
@@ -109,19 +111,28 @@ int __CRTDECL wmain(__in int argc, __in wchar_t *argv[], __in wchar_t *envp[])
     szExeNameW = argv[1];
   }
 
-  //take dll name
-  if (argv[2][0] == 0)
+  //construct dll name
+  if (::GetModuleFileNameW(NULL, szDllToInjectNameW, MAX_PATH) >= MAX_PATH-1)
   {
-    wprintf_s(L"Error: Invalid dll name specified.\n");
+    wprintf_s(L"Error: my file name is too long.\n");
     return 1;
   }
-  szDllToInjectNameW = argv[2];
+
+  WCHAR *dot = wcsrchr(szDllToInjectNameW, '.');
+  if (dot == NULL ||
+      _wcsicmp(dot, L".exe") != 0)
+  {
+    wprintf_s(L"Error: my file name does not end in '.exe'.\n");
+    return 1;
+  }
+
+  wcsncpy_s(dot, 5, L".dll", 4);
 
   //is initialize function specified?
   szCommandArgumentsW = NULL;
-  if (argc >= 4 && argv[3][0] != 0)
+  if (argc >= 3 && argv[2][0] != 0)
   {
-	  szCommandArgumentsW = argv[3];
+	  szCommandArgumentsW = argv[2];
   }
 
   //execute action
