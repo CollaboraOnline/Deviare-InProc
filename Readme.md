@@ -1,13 +1,14 @@
 ﻿This is the upstream Deviare-InProc (described below) with some
-additions and specializations for specifically tracing COM calls and
-dumping them symbolically to a log file.
+additions and specializations for specifically hooking COM
+IDispatch::Invoke calls and dumping them symbolically to a log file.
 
 Specifically, here the InjectDll program (built in the project of that
 name) always injects the Dll created in the TestDll project, named
 InjectDll.dll. Compared to the upstream TestDll.dll, it hooks COM
-object creation calls and then IDispatch::Invoke calls of created
-IDispatch objects. (In 64-bit configurations, add "64" to the
-baenames, as in upstream.)
+object creation calls and then the IDispatch::Invoke calls of created
+IDispatch objects.
+
+(In 64-bit configurations, we add "64" to the basenames, as in upstream.)
 
 It is obviously a work in progress.
 
