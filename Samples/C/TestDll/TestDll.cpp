@@ -1,4 +1,4 @@
-/* -*- c-style-name: "gnu"; indent-tabs-mode: nil */
+/* -*- c-style-name: "gnu"; indent-tabs-mode: nil; fill-column: 100 -*- */
 /*
  * Copyright (C) 2010-2015 Nektra S.A., Buenos Aires, Argentina.
  * All rights reserved. Contact: http://www.nektra.com
@@ -805,10 +805,32 @@ extern "C" BOOL APIENTRY DllMain(__in HMODULE hModule, __in DWORD ulReasonForCal
 
 extern "C" DWORD __stdcall InitializeDll()
 {
-  if (::MessageBoxW(NULL, L"In InitializeDll. Press 'OK' to continue or 'Cancel' to return an error.", L"TestDll",
-                    MB_OKCANCEL) != IDOK)
+  // The InjectDLL program passes the name of this InitializeDll() function only to the
+  // NktHookLibHelpers::InjectDllByPidW() function. That means this will be called only in the case
+  // when injecting us in an already running process. In that case we won't be able to catch Invoke
+  // calls of IDispatch objects already instantiated, until a new such object that uses the same
+  // implementation of Invoke (IDispatch_Invoke_Proxy in oleaut32.dll, in the Word and Excel case at
+  // least) has been instantiated.
+
+  // Work around that by instantiating such an object ourselves here. This works at least in a
+  // simple test case, but yeah, it does seem a bit dangerous, so let's see. For now, use a
+  // "Word.Application" object, but ideally we should use a dummy .exe file of our own. On the other
+  // hand, if we do that we can't be sure it will actually use the same implementation of
+  // IDispatch::Invoke.
+
+  CLSID clsid;
+  if (FAILED(::CLSIDFromProgID(L"Word.Application", &clsid)))
     {
-      return ERROR_CANCELLED;
+      // Just ignore that then and do as good as we can
+      return ERROR_SUCCESS;
     }
+
+  LPVOID pv;
+  if (FAILED(::CoGetClassObject(clsid, CLSCTX_LOCAL_SERVER, NULL, IID_IClassFactory, &pv)))
+    {
+      // Ditto
+      return ERROR_SUCCESS;
+    }
+
   return ERROR_SUCCESS;
 }
