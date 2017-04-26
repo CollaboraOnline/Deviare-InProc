@@ -1,4 +1,19 @@
-﻿Deviare In-Proc is a code interception engine for Microsoft Windows® developed by
+﻿This is the upstream Deviare-InProc (described below) with some
+additions and specializations for specifically tracing COM calls and
+dumping them symbolically to a log file.
+
+Specifically, here the InjectDll program (built in the project of that
+name) always injects the Dll created in the TestDll project, named
+InjectDll.dll. Compared to the upstream TestDll.dll, it hooks COM
+object creation calls and then IDispatch::Invoke calls of created
+IDispatch objects. (In 64-bit configurations, add "64" to the
+baenames, as in upstream.)
+
+It is obviously a work in progress.
+
+----------------------
+
+Deviare In-Proc is a code interception engine for Microsoft Windows® developed by
 [Nektra Advanced Computing](http://www.nektra.com).
 
 This library is at the core of our [Deviare v2.0](http://www.nektra.com/products/deviare-api-hook-windows/)
